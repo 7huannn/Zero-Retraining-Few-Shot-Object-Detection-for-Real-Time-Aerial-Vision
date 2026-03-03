@@ -1,0 +1,6 @@
+weights: yolov8n.pt
+device: "0"
+imgsz: 960
+conf: 0.25
+source: data/sample
+output_dir: outputs/yolo_demo

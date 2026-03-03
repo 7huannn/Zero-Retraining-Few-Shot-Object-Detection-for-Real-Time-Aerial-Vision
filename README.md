@@ -1,1 +1,0 @@
-# Zero-Retraining-Few-Shot-Object-Detection-for-Real-Time-Aerial-Vision
