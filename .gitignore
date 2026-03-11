@@ -10,6 +10,20 @@ data/*
 !data/sample/.gitkeep
 outputs/*
 !outputs/.gitkeep
+!outputs/siamese_demo/
+outputs/siamese_demo/*
+!outputs/siamese_demo/siamese_report.json
+!outputs/yolo_demo/
+outputs/yolo_demo/*
+!outputs/yolo_demo/predict/
+outputs/yolo_demo/predict/*
+!outputs/yolo_demo/predict/*.jpg
+!outputs/yoloe_demo/
+outputs/yoloe_demo/*
+!outputs/yoloe_demo/predict/
+outputs/yoloe_demo/predict/*
+!outputs/yoloe_demo/predict/*.jpg
 
 *.pt
 *.pdparams
+mobileclip_blt.ts

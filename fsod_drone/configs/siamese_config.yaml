@@ -1,0 +1,10 @@
+device: auto
+pretrained_backbone: true
+output_dir: outputs/siamese_demo
+pairs:
+  - name: identical_bus
+    image_a: data/sample/bus.jpg
+    image_b: data/sample/bus.jpg
+  - name: bus_vs_zidane
+    image_a: data/sample/bus.jpg
+    image_b: data/sample/zidane.jpg

@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"yaml: {'ok' if detect_optional_package('yaml') else 'missing'}")
     print(f"ultralytics: {'ok' if detect_optional_package('ultralytics') else 'missing'}")
     print(f"torch: {'ok' if detect_optional_package('torch') else 'missing'}")
+    print(f"torchvision: {'ok' if detect_optional_package('torchvision') else 'missing'}")
     return 0
 
 

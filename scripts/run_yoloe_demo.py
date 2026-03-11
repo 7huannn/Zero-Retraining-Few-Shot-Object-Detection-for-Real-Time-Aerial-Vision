@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     runner = YOLOEDemoRunner(weights=config.get("weights", "yoloe-11s-seg.pt"))
     outputs = runner.predict(
         source=resolve_path(config["source"]),
+        classes=list(config.get("classes", [])),
         conf=float(config.get("conf", 0.25)),
         device=config.get("device"),
         imgsz=int(config.get("imgsz", 960)),

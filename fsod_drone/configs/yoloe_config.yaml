@@ -4,3 +4,8 @@ imgsz: 960
 conf: 0.25
 source: data/sample
 output_dir: outputs/yoloe_demo
+classes:
+  - person
+  - bus
+  - stop sign
+  - tie
