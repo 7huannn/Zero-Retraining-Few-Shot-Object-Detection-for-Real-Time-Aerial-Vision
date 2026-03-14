@@ -7,7 +7,8 @@ import random
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
+# MODIFIED: Changed from KMeans to MiniBatchKMeans for better performance
+from sklearn.cluster import MiniBatchKMeans
 import cv2
 import numpy as np
 import torch
@@ -141,7 +142,61 @@ class DataPreprocessor:
 
         print(f"     Extracted {len(reference_data)} reference sets (crop + color features).")
         return reference_data
+    # ======================================================================
+    # NEW METHOD: Extracts dominant color features from a single crop
+    # ======================================================================
+    def _extract_dominant_colors(self, crop: np.ndarray, num_colors: int = 5) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Extracts dominant colors from a crop using MiniBatchKMeans in LAB color space.
+        
+        Args:
+            crop (np.ndarray): The input image crop (can be BGR or BGRA).
+            num_colors (int): The number of dominant colors to extract.
+            
+        Returns:
+            A tuple containing (dominant_colors_lab, weights) or None if extraction fails.
+        """
+        if crop is None or crop.size == 0:
+            return None
+        try:
+            # Use the alpha channel as a mask if it exists
+            if crop.shape[2] == 4:
+                mask = crop[:, :, 3] > 0
+                if not np.any(mask): return None
+                pixels = crop[:, :, :3][mask]
+            else:
+                pixels = crop.reshape(-1, 3)
 
+            # Ensure there are enough pixels to cluster
+            if pixels.shape[0] < num_colors:
+                return None
+
+            # For performance, downsample if the crop is very large
+            max_pixels_for_kmeans = 10000
+            if pixels.shape[0] > max_pixels_for_kmeans:
+                scale = np.sqrt(max_pixels_for_kmeans / pixels.shape[0])
+                small_img = cv2.resize(pixels.reshape(1, -1, 3).astype(np.uint8), (0, 0), fx=scale, fy=1.0)
+                pixels = small_img.reshape(-1, 3)
+
+            # Convert to LAB color space (perceptually more uniform)
+            lab_pixels = cv2.cvtColor(pixels.reshape(1, -1, 3).astype(np.uint8), cv2.COLOR_BGR2LAB).reshape(-1, 3)
+            
+            # Use MiniBatchKMeans for faster clustering
+            kmeans = MiniBatchKMeans(n_clusters=num_colors, random_state=self.seed, n_init='auto')
+            kmeans.fit(lab_pixels)
+            
+            # Get cluster centers (dominant colors) and their weights
+            unique_labels, counts = np.unique(kmeans.labels_, return_counts=True)
+            weights = counts / counts.sum()
+            dominant_colors_lab = kmeans.cluster_centers_
+            
+            # Sort colors by weight (most dominant first)
+            sorted_indices = np.argsort(weights)[::-1]
+            return dominant_colors_lab[sorted_indices], weights[sorted_indices]
+
+        except Exception as e:
+            print(f"  -> WARNING: Could not extract dominant colors. Error: {e}")
+            return None
     def _score_detection(self, bbox: Tuple[int, int, int, int], confidence: float,
                         area_weight: float, conf_weight: float) -> float:
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
