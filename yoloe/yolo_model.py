@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fsod_drone.utils import ensure_dir
+from utils import ensure_dir
 
 
 class YOLODemoRunner:
     """Load a pretrained YOLOv8 model and run a basic prediction demo."""
 
-    def __init__(self, weights: str | Path = "yolov8n.pt") -> None:
+    def __init__(self, weights: str | Path = "models/yolov8n.pt") -> None:
         try:
             from ultralytics import YOLO
         except ImportError as exc:
@@ -27,7 +27,7 @@ class YOLODemoRunner:
         conf: float = 0.25,
         device: str | int | None = None,
         imgsz: int = 640,
-        output_dir: str | Path = "outputs/yolo_demo",
+        output_dir: str | Path = "result/yolo_demo",
         save: bool = True,
     ) -> list[str]:
         """Run prediction on an image, folder, or video path."""

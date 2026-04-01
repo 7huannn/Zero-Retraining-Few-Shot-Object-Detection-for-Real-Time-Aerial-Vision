@@ -1,9 +1,9 @@
-weights: yoloe-11s-seg.pt
+weights: models/yoloe-11s-seg.pt
 device: "0"
 imgsz: 960
 conf: 0.25
-source: data/sample
-output_dir: outputs/yoloe_demo
+source: data/samples
+output_dir: result/yoloe_demo
 classes:
   - person
   - bus

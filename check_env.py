@@ -1,18 +1,11 @@
-"""Check whether the basic demo dependencies are available."""
+"""Check whether the project dependencies are available."""
 
 from __future__ import annotations
 
 import argparse
 import platform
-import sys
 
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from fsod_drone.utils import detect_optional_package
+from utils import detect_optional_package
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,6 +18,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"ultralytics: {'ok' if detect_optional_package('ultralytics') else 'missing'}")
     print(f"torch: {'ok' if detect_optional_package('torch') else 'missing'}")
     print(f"torchvision: {'ok' if detect_optional_package('torchvision') else 'missing'}")
+    print(f"opencv-python: {'ok' if detect_optional_package('cv2') else 'missing'}")
+    print(f"scikit-learn: {'ok' if detect_optional_package('sklearn') else 'missing'}")
+
+    if detect_optional_package("ultralytics"):
+        try:
+            from ultralytics import YOLOE  # noqa: F401
+
+            print("YOLOE: ok")
+        except Exception as exc:
+            print(f"YOLOE: missing ({exc})")
     return 0
 
 

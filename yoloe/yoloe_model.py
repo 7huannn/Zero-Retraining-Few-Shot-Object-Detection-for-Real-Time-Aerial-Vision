@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from fsod_drone.utils import ensure_dir
+from utils import ensure_dir
 
 
 class YOLOEDemoRunner:
     """Load a pretrained YOLOE model and run a basic prediction demo."""
 
-    def __init__(self, weights: str | Path = "yoloe-11s-seg.pt") -> None:
+    def __init__(self, weights: str | Path = "models/yoloe-11s-seg.pt") -> None:
         try:
             from ultralytics import YOLOE
         except ImportError as exc:
@@ -29,7 +29,7 @@ class YOLOEDemoRunner:
         conf: float = 0.25,
         device: str | int | None = None,
         imgsz: int = 640,
-        output_dir: str | Path = "outputs/yoloe_demo",
+        output_dir: str | Path = "result/yoloe_demo",
         save: bool = True,
     ) -> list[str]:
         """Run YOLOE prediction after defining the text prompts to detect."""

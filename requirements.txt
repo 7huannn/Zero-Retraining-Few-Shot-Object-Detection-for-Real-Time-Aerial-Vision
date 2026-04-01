@@ -1,4 +1,8 @@
+numpy>=1.26.0
+opencv-python>=4.9.0
+Pillow>=10.0.0
 PyYAML>=6.0
+scikit-learn>=1.4.0
 torch>=2.2.0
 torchvision>=0.17.0
 ultralytics>=8.2.0
