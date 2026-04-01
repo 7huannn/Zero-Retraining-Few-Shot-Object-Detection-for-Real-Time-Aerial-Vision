@@ -4,26 +4,33 @@ __pycache__/
 .mypy_cache/
 .DS_Store
 
+# Large local datasets.
 data/*
 !data/.gitkeep
-!data/sample/
-!data/sample/.gitkeep
-outputs/*
-!outputs/.gitkeep
-!outputs/siamese_demo/
-outputs/siamese_demo/*
-!outputs/siamese_demo/siamese_report.json
-!outputs/yolo_demo/
-outputs/yolo_demo/*
-!outputs/yolo_demo/predict/
-outputs/yolo_demo/predict/*
-!outputs/yolo_demo/predict/*.jpg
-!outputs/yoloe_demo/
-outputs/yoloe_demo/*
-!outputs/yoloe_demo/predict/
-outputs/yoloe_demo/predict/*
-!outputs/yoloe_demo/predict/*.jpg
+!data/samples/
+data/samples/*
+!data/samples/.gitkeep
+
+# Local model weights.
+models/*
+!models/.gitkeep
+
+# Preprocessed caches.
+preprocessed_data/*
+!preprocessed_data/.gitkeep
+
+# Generated outputs and checkpoints.
+result/*
+!result/.gitkeep
+!result/siamese/
+result/siamese/*
+!result/siamese/.gitkeep
+
+# Editable clones and large third-party installs.
+third_party/
+
+# Optional local MobileCLIP artifact.
+ml-mobileclip/mobileclip_blt.ts
 
 *.pt
 *.pdparams
-mobileclip_blt.ts
