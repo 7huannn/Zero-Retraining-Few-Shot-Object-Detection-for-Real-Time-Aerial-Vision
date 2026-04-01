@@ -1,0 +1,32 @@
+seed: 42
+device: auto
+
+annotations_path: data/train/annotations/annotations.json
+samples_dir: data/train/samples
+crop_cache_dir: preprocessed_data/siamese/crops
+manifest_path: preprocessed_data/siamese/manifest.json
+checkpoint_dir: result/siamese
+
+backbone: resnet18
+pretrained_backbone: true
+embedding_dim: 128
+dropout: 0.1
+image_size: 224
+
+epochs: 10
+batch_size: 32
+num_workers: 0
+lr: 0.0001
+weight_decay: 0.0001
+margin: 1.0
+similarity_threshold: 0.65
+
+train_ratio: 0.8
+positive_ratio: 0.5
+hard_negative_ratio: 0.35
+train_pairs: 6000
+val_pairs: 1500
+
+max_crops_per_track: 24
+min_crop_size: 16
+force_rebuild_cache: false

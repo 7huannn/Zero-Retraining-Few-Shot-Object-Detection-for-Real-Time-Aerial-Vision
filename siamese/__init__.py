@@ -1,5 +1,25 @@
-"""Research scaffold for few-shot aerial object detection."""
+"""Siamese training and verification utilities."""
 
-__all__ = ["__version__"]
+from .data import SiamesePairDataset, build_crop_cache, sample_id_to_class_name
+from .siamese_model import (
+    ContrastiveLoss,
+    SiameseDemoRunner,
+    SiameseEmbeddingNet,
+    SiameseVerifier,
+    build_image_transform,
+    load_siamese_checkpoint,
+    save_siamese_checkpoint,
+)
 
-__version__ = "0.1.0"
+__all__ = [
+    "ContrastiveLoss",
+    "SiameseDemoRunner",
+    "SiameseEmbeddingNet",
+    "SiamesePairDataset",
+    "SiameseVerifier",
+    "build_crop_cache",
+    "build_image_transform",
+    "load_siamese_checkpoint",
+    "sample_id_to_class_name",
+    "save_siamese_checkpoint",
+]

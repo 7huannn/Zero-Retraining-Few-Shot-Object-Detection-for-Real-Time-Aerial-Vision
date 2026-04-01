@@ -1,10 +1,15 @@
 device: auto
 pretrained_backbone: true
-output_dir: outputs/siamese_demo
+backbone: resnet18
+embedding_dim: 128
+image_size: 224
+# checkpoint_path: result/siamese/best.pt
+output_dir: result/siamese/demo
+report_name: demo_pairs.json
 pairs:
   - name: identical_bus
-    image_a: data/sample/bus.jpg
-    image_b: data/sample/bus.jpg
+    image_a: data/samples/bus.jpg
+    image_b: data/samples/bus.jpg
   - name: bus_vs_zidane
-    image_a: data/sample/bus.jpg
-    image_b: data/sample/zidane.jpg
+    image_a: data/samples/bus.jpg
+    image_b: data/samples/zidane.jpg

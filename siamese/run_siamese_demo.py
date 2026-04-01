@@ -1,4 +1,4 @@
-"""Run a simple Siamese-style similarity smoke test from YAML config."""
+"""Run pairwise Siamese comparisons from a YAML config."""
 
 from __future__ import annotations
 
@@ -10,18 +10,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from fsod_drone.models import SiameseDemoRunner
-from fsod_drone.utils import load_yaml, resolve_path
+from siamese.siamese_model import SiameseDemoRunner
+from utils import load_yaml, resolve_path
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
-    parser = argparse.ArgumentParser(description="Run Siamese demo.")
+    parser = argparse.ArgumentParser(description="Run Siamese pair comparisons.")
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("fsod_drone/configs/siamese_config.yaml"),
-        help="Path to the Siamese demo config.",
+        default=Path("siamese/siamese_config.yaml"),
+        help="Path to the Siamese comparison config.",
     )
     args = parser.parse_args(argv)
 
@@ -30,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     runner = SiameseDemoRunner(
         device=str(config.get("device", "auto")),
         pretrained_backbone=bool(config.get("pretrained_backbone", True)),
+        checkpoint_path=None if config.get("checkpoint_path") is None else resolve_path(config["checkpoint_path"]),
+        backbone_name=str(config.get("backbone", "resnet18")),
+        embedding_dim=int(config.get("embedding_dim", 128)),
+        image_size=int(config.get("image_size", 224)),
     )
 
     pairs = []
@@ -47,10 +51,11 @@ def main(argv: list[str] | None = None) -> int:
 
     results, report_path = runner.compare_many(
         pairs=pairs,
-        output_dir=resolve_path(config.get("output_dir", "outputs/siamese_demo")),
+        output_dir=resolve_path(config.get("output_dir", "result/siamese")),
+        report_name=str(config.get("report_name", "siamese_report.json")),
     )
 
-    print("Siamese demo completed.")
+    print("Siamese comparison completed.")
     print(f"Report: {report_path}")
     for item in results:
         print(
