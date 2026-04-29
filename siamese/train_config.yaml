@@ -9,24 +9,31 @@ checkpoint_dir: result/siamese
 
 backbone: resnet18
 pretrained_backbone: true
+freeze_backbone: true
 embedding_dim: 128
-dropout: 0.1
+dropout: 0.4
 image_size: 224
 
-epochs: 10
+epochs: 30
+early_stopping_patience: 5
+early_stopping_min_delta: 0.0
+checkpoint_metric: val_loss
 batch_size: 32
 num_workers: 0
-lr: 0.0001
-weight_decay: 0.0001
-margin: 1.0
+lr: 0.00001
+weight_decay: 0.001
+loss: triplet
+margin: 0.5
 similarity_threshold: 0.65
 
 train_ratio: 0.8
+split_strategy: stratified
+loco_fold_index: 0
 positive_ratio: 0.5
 hard_negative_ratio: 0.35
-train_pairs: 6000
-val_pairs: 1500
+train_pairs: 10000
+val_pairs: 2000
 
-max_crops_per_track: 24
+max_crops_per_track: 48
 min_crop_size: 16
 force_rebuild_cache: false

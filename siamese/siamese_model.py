@@ -38,10 +38,13 @@ def build_image_transform(image_size: int = 224, train: bool = False) -> transfo
         return transforms.Compose(
             [
                 transforms.Resize(int(image_size * 1.15), interpolation=interpolation),
-                transforms.RandomResizedCrop(image_size, scale=(0.75, 1.0), interpolation=interpolation),
+                transforms.RandomResizedCrop(image_size, scale=(0.65, 1.0), interpolation=interpolation),
                 transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=15, interpolation=interpolation),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.5))], p=0.25),
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.02),
                 transforms.ToTensor(),
+                transforms.RandomErasing(p=0.20, scale=(0.02, 0.12), ratio=(0.3, 3.3), value="random"),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
@@ -87,12 +90,18 @@ class SiameseEmbeddingNet(nn.Module):
         embedding_dim: int = 128,
         pretrained_backbone: bool = True,
         dropout: float = 0.1,
+        freeze_backbone: bool = False,
     ) -> None:
         super().__init__()
         self.backbone_name = backbone_name
         self.embedding_dim = embedding_dim
         self.pretrained_backbone = pretrained_backbone
+        self.freeze_backbone = freeze_backbone
         self.backbone, feature_dim = _build_backbone(backbone_name, pretrained_backbone)
+        if self.freeze_backbone:
+            for parameter in self.backbone.parameters():
+                parameter.requires_grad = False
+            self.backbone.eval()
         hidden_dim = max(embedding_dim * 2, 256)
         self.projection = nn.Sequential(
             nn.Linear(feature_dim, hidden_dim),
@@ -100,6 +109,13 @@ class SiameseEmbeddingNet(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, embedding_dim),
         )
+
+    def train(self, mode: bool = True) -> SiameseEmbeddingNet:
+        """Keep a frozen backbone in eval mode while training the projection head."""
+        super().train(mode)
+        if self.freeze_backbone:
+            self.backbone.eval()
+        return self
 
     def encode(self, image: torch.Tensor) -> torch.Tensor:
         """Encode one batch of images into normalized embeddings."""
@@ -126,6 +142,34 @@ class ContrastiveLoss(nn.Module):
         return (positive + negative).mean()
 
 
+class TripletBatchHardLoss(nn.Module):
+    """Batch-hard triplet loss for normalized embeddings."""
+
+    def __init__(self, margin: float = 0.5) -> None:
+        super().__init__()
+        self.margin = margin
+
+    def forward(self, embeddings: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        if embeddings.ndim != 2:
+            raise ValueError("Expected embeddings with shape [batch, dim].")
+        if labels.ndim != 1 or labels.shape[0] != embeddings.shape[0]:
+            raise ValueError("Expected one integer label per embedding.")
+
+        distances = torch.cdist(embeddings, embeddings, p=2)
+        same_label = labels.unsqueeze(0).eq(labels.unsqueeze(1))
+        eye = torch.eye(labels.shape[0], dtype=torch.bool, device=labels.device)
+        positive_mask = same_label & ~eye
+        negative_mask = ~same_label
+        valid_anchor = positive_mask.any(dim=1) & negative_mask.any(dim=1)
+        if not bool(valid_anchor.any()):
+            return embeddings.sum() * 0.0
+
+        hardest_positive = distances.masked_fill(~positive_mask, -1.0).max(dim=1).values
+        hardest_negative = distances.masked_fill(~negative_mask, float("inf")).min(dim=1).values
+        losses = F.relu(hardest_positive + self.margin - hardest_negative)
+        return losses[valid_anchor].mean()
+
+
 def cosine_similarity(embedding_a: torch.Tensor, embedding_b: torch.Tensor) -> torch.Tensor:
     """Return cosine similarity for two batches of embeddings."""
     return F.cosine_similarity(embedding_a, embedding_b)
@@ -138,6 +182,7 @@ def build_model_from_config(config: dict[str, Any]) -> SiameseEmbeddingNet:
         embedding_dim=int(config.get("embedding_dim", 128)),
         pretrained_backbone=bool(config.get("pretrained_backbone", True)),
         dropout=float(config.get("dropout", 0.1)),
+        freeze_backbone=bool(config.get("freeze_backbone", False)),
     )
 
 

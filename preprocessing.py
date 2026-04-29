@@ -42,9 +42,11 @@ class YOLOEPreprocessor:
         yoloe_model_path: str | Path,
         seed: int = 42,
         siamese_checkpoint: str | Path | None = None,
+        vpe_imgsz: int = 640,
     ) -> None:
         seed_everything(seed)
         self.seed = seed
+        self.vpe_imgsz = vpe_imgsz
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.detector = YOLO(str(yolov8_model_path))
         self.yoloe_model = YOLOE(str(yoloe_model_path))
@@ -106,7 +108,7 @@ class YOLOEPreprocessor:
                     "verbose": False,
                     "batch": 1,
                     "device": self.device,
-                    "imgsz": 640,
+                    "imgsz": self.vpe_imgsz,
                 },
                 _callbacks=self.yoloe_model.callbacks,
             )
@@ -395,6 +397,7 @@ class YOLOEPreprocessor:
             "num_reference_crops": len(reference_data),
             "num_augmented_backgrounds": len(augmented_images),
             "siamese_checkpoint_used": bool(self.siamese_verifier is not None),
+            "vpe_imgsz": int(config.get("vpe_imgsz", self.vpe_imgsz)),
         }
         save_json(sample_output_dir / "metadata.json", metadata)
         return metadata
@@ -434,6 +437,7 @@ def build_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "objects_per_background": args.objects_per_background,
         "min_aug_scale": args.min_aug_scale,
         "max_aug_scale": args.max_aug_scale,
+        "vpe_imgsz": args.vpe_imgsz,
         "prefer_high_conf_crops": args.prefer_high_conf_crops,
         "limit_samples": args.limit_samples,
         "sample_ids": args.sample_id,
@@ -453,10 +457,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top-k-detections", type=int, default=1)
     parser.add_argument("--detection-area-weight", type=float, default=0.7)
     parser.add_argument("--detection-conf-weight", type=float, default=0.3)
-    parser.add_argument("--num-backgrounds", type=int, default=2)
+    parser.add_argument("--num-backgrounds", type=int, default=4)
     parser.add_argument("--objects-per-background", type=int, default=5)
-    parser.add_argument("--min-aug-scale", type=float, default=0.05)
-    parser.add_argument("--max-aug-scale", type=float, default=0.15)
+    parser.add_argument("--min-aug-scale", type=float, default=0.04)
+    parser.add_argument("--max-aug-scale", type=float, default=0.20)
+    parser.add_argument("--vpe-imgsz", type=int, default=640)
     parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--sample-id", action="append", default=[])
     parser.add_argument("--prefer-high-conf-crops", dest="prefer_high_conf_crops", action="store_true")
@@ -471,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         yoloe_model_path=resolve_path(args.yoloe_weights),
         seed=args.seed,
         siamese_checkpoint=None if args.siamese_checkpoint is None else resolve_path(args.siamese_checkpoint),
+        vpe_imgsz=args.vpe_imgsz,
     )
     metadata = preprocessor.preprocess_dataset(dataset_path, output_dir, build_config_from_args(args))
     print(f"Preprocessed {len(metadata)} samples into {output_dir}")

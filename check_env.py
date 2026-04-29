@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import platform
 
+from tracker_adapter import available_tracker_backends
 from utils import detect_optional_package
 
 
@@ -20,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"torchvision: {'ok' if detect_optional_package('torchvision') else 'missing'}")
     print(f"opencv-python: {'ok' if detect_optional_package('cv2') else 'missing'}")
     print(f"scikit-learn: {'ok' if detect_optional_package('sklearn') else 'missing'}")
+    print(f"matplotlib: {'ok' if detect_optional_package('matplotlib') else 'missing'}")
 
     if detect_optional_package("ultralytics"):
         try:
@@ -28,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
             print("YOLOE: ok")
         except Exception as exc:
             print(f"YOLOE: missing ({exc})")
+
+    tracker_backends = available_tracker_backends()
+    print(f"tracker_backends_kcf_policy: {', '.join(tracker_backends) if tracker_backends else 'none'}")
+    print(f"kcf_available: {'yes' if any(name in {'kcf', 'legacy_kcf'} for name in tracker_backends) else 'no'}")
     return 0
 
 

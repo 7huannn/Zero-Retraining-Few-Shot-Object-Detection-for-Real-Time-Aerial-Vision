@@ -144,10 +144,66 @@ def build_crop_cache(
     return manifest_file
 
 
-def split_sample_ids(sample_ids: list[str], train_ratio: float, seed: int) -> tuple[list[str], list[str]]:
+def split_sample_ids(
+    sample_ids: list[str],
+    train_ratio: float,
+    seed: int,
+    split_strategy: str = "random",
+    loco_val_class: str | None = None,
+    loco_fold_index: int = 0,
+) -> tuple[list[str], list[str]]:
     """Split sample ids deterministically into train and validation sets."""
     if len(sample_ids) < 2:
         raise ValueError("Need at least two samples to build a Siamese split.")
+    strategy = split_strategy.lower()
+    if strategy in {"leave_one_class_out", "loco"}:
+        class_to_ids: dict[str, list[str]] = {}
+        for sample_id in sample_ids:
+            class_to_ids.setdefault(sample_id_to_class_name(sample_id), []).append(sample_id)
+        classes = sorted(class_to_ids)
+        heldout_class = loco_val_class or classes[loco_fold_index % len(classes)]
+        if heldout_class not in class_to_ids:
+            raise ValueError(f"LOCO class '{heldout_class}' not found in sample ids.")
+        val_ids = sorted(class_to_ids[heldout_class])
+        train_ids = sorted(sample_id for sample_id in sample_ids if sample_id not in val_ids)
+        if len(train_ids) < 2 or len(val_ids) < 2:
+            raise ValueError("LOCO split needs at least two train and two validation samples.")
+        return train_ids, val_ids
+
+    if strategy == "stratified":
+        rng = random.Random(seed)
+        class_to_ids: dict[str, list[str]] = {}
+        for sample_id in sample_ids:
+            class_to_ids.setdefault(sample_id_to_class_name(sample_id), []).append(sample_id)
+
+        val_target = max(2, int(round(len(sample_ids) * (1.0 - train_ratio))))
+        val_target = min(val_target, len(sample_ids) - 1)
+        class_names = sorted(class_to_ids)
+        rng.shuffle(class_names)
+        val_ids: list[str] = []
+        train_ids: list[str] = []
+
+        for class_name in class_names:
+            ids = list(class_to_ids[class_name])
+            rng.shuffle(ids)
+            if len(val_ids) < val_target and len(ids) > 1:
+                val_ids.append(ids[0])
+                train_ids.extend(ids[1:])
+            else:
+                train_ids.extend(ids)
+
+        if len(val_ids) < val_target:
+            movable = list(train_ids)
+            rng.shuffle(movable)
+            move_count = min(val_target - len(val_ids), max(0, len(train_ids) - 1))
+            for sample_id in movable[:move_count]:
+                train_ids.remove(sample_id)
+                val_ids.append(sample_id)
+        return sorted(train_ids), sorted(val_ids)
+
+    if strategy != "random":
+        raise ValueError(f"Unsupported split strategy: {split_strategy}")
+
     shuffled = list(sample_ids)
     random.Random(seed).shuffle(shuffled)
     val_size = max(2, int(round(len(shuffled) * (1.0 - train_ratio))))
@@ -182,6 +238,9 @@ class SiamesePairDataset(Dataset):
         positive_ratio: float = 0.5,
         hard_negative_ratio: float = 0.35,
         seed: int = 42,
+        split_strategy: str = "random",
+        loco_val_class: str | None = None,
+        loco_fold_index: int = 0,
     ) -> None:
         if split not in {"train", "val"}:
             raise ValueError(f"Unsupported split: {split}")
@@ -192,7 +251,14 @@ class SiamesePairDataset(Dataset):
         for record in records:
             grouped_records.setdefault(record.sample_id, []).append(record)
 
-        train_ids, val_ids = split_sample_ids(sorted(grouped_records), train_ratio=train_ratio, seed=seed)
+        train_ids, val_ids = split_sample_ids(
+            sorted(grouped_records),
+            train_ratio=train_ratio,
+            seed=seed,
+            split_strategy=split_strategy,
+            loco_val_class=loco_val_class,
+            loco_fold_index=loco_fold_index,
+        )
         selected_ids = train_ids if split == "train" else val_ids
         self.groups = {sample_id: grouped_records[sample_id] for sample_id in selected_ids}
         self.group_ids = sorted(self.groups)
@@ -259,5 +325,7 @@ class SiamesePairDataset(Dataset):
             "label": torch.tensor(label, dtype=torch.float32),
             "sample_a": record_a.sample_id,
             "sample_b": record_b.sample_id,
+            "class_a": record_a.class_name,
+            "class_b": record_b.class_name,
             "pair_type": "positive" if is_positive else "negative",
         }

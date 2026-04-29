@@ -9,6 +9,7 @@ import sys
 from typing import Any
 
 import torch
+from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -18,7 +19,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from siamese.data import SiamesePairDataset, build_crop_cache
-from siamese.siamese_model import ContrastiveLoss, SiameseEmbeddingNet, cosine_similarity, save_siamese_checkpoint
+from siamese.siamese_model import (
+    ContrastiveLoss,
+    SiameseEmbeddingNet,
+    TripletBatchHardLoss,
+    cosine_similarity,
+    save_siamese_checkpoint,
+)
 from utils import ensure_dir, load_json, load_yaml, resolve_path, save_json, seed_everything
 
 
@@ -63,10 +70,46 @@ def create_loader(dataset: SiamesePairDataset, batch_size: int, num_workers: int
     )
 
 
+def build_criterion(config: dict[str, Any]) -> tuple[nn.Module, str]:
+    """Build the configured metric-learning loss."""
+    loss_name = str(config.get("loss", "contrastive")).lower()
+    margin = float(config.get("margin", 1.0))
+    if loss_name == "contrastive":
+        return ContrastiveLoss(margin=margin), loss_name
+    if loss_name in {"triplet", "batch_hard_triplet"}:
+        return TripletBatchHardLoss(margin=margin), "triplet"
+    raise ValueError(f"Unsupported Siamese loss: {loss_name}")
+
+
+def batch_sample_labels(batch: dict[str, Any], device: torch.device) -> torch.Tensor:
+    """Map the sample ids present in one batch to compact integer labels."""
+    sample_ids = list(batch["sample_a"]) + list(batch["sample_b"])
+    mapping: dict[str, int] = {}
+    label_ids: list[int] = []
+    for sample_id in sample_ids:
+        if sample_id not in mapping:
+            mapping[sample_id] = len(mapping)
+        label_ids.append(mapping[sample_id])
+    return torch.tensor(label_ids, dtype=torch.long, device=device)
+
+
+def classification_metrics(tp: int, fp: int, fn: int) -> dict[str, float]:
+    """Compute binary precision/recall/F1 for pair verification."""
+    precision = tp / max(1, tp + fp)
+    recall = tp / max(1, tp + fn)
+    f1 = 2.0 * precision * recall / max(1e-12, precision + recall)
+    return {
+        "precision": round(precision, 6),
+        "recall": round(recall, 6),
+        "f1": round(f1, 6),
+    }
+
+
 def run_epoch(
     model: SiameseEmbeddingNet,
     loader: DataLoader,
-    criterion: ContrastiveLoss,
+    criterion: nn.Module,
+    loss_name: str,
     device: torch.device,
     optimizer: AdamW | None,
     similarity_threshold: float,
@@ -79,6 +122,9 @@ def run_epoch(
     total_correct = 0
     total_samples = 0
     total_cosine = 0.0
+    true_positive = 0
+    false_positive = 0
+    false_negative = 0
 
     for batch in loader:
         image_a = batch["image_a"].to(device)
@@ -90,28 +136,57 @@ def run_epoch(
 
         with torch.set_grad_enabled(is_training):
             embedding_a, embedding_b = model(image_a, image_b)
-            loss = criterion(embedding_a, embedding_b, labels)
+            if loss_name == "triplet":
+                loss = criterion(torch.cat([embedding_a, embedding_b], dim=0), batch_sample_labels(batch, device))
+            else:
+                loss = criterion(embedding_a, embedding_b, labels)
             if is_training:
                 loss.backward()
                 optimizer.step()
 
         cosine_scores = cosine_similarity(embedding_a, embedding_b)
         predictions = (cosine_scores >= similarity_threshold).float()
+        predicted_positive = predictions.bool()
+        actual_positive = labels.bool()
 
         batch_size = labels.shape[0]
         total_loss += float(loss.item()) * batch_size
         total_correct += int((predictions == labels).sum().item())
         total_cosine += float(cosine_scores.mean().item()) * batch_size
         total_samples += batch_size
+        true_positive += int((predicted_positive & actual_positive).sum().item())
+        false_positive += int((predicted_positive & ~actual_positive).sum().item())
+        false_negative += int((~predicted_positive & actual_positive).sum().item())
 
     if total_samples == 0:
         raise RuntimeError("No samples were produced for this epoch.")
 
-    return {
+    metrics = {
         "loss": round(total_loss / total_samples, 6),
         "accuracy": round(total_correct / total_samples, 6),
         "mean_cosine": round(total_cosine / total_samples, 6),
     }
+    metrics.update(classification_metrics(true_positive, false_positive, false_negative))
+    return metrics
+
+
+def metric_improved(
+    epoch_metrics: dict[str, Any],
+    best_value: float | None,
+    metric_name: str,
+    min_delta: float,
+) -> tuple[bool, float]:
+    """Return whether the selected checkpoint metric improved."""
+    if metric_name == "val_loss":
+        value = float(epoch_metrics["val"]["loss"])
+        return best_value is None or value < best_value - min_delta, value
+    if metric_name == "val_accuracy":
+        value = float(epoch_metrics["val"]["accuracy"])
+        return best_value is None or value > best_value + min_delta, value
+    if metric_name == "val_f1":
+        value = float(epoch_metrics["val"]["f1"])
+        return best_value is None or value > best_value + min_delta, value
+    raise ValueError(f"Unsupported checkpoint metric: {metric_name}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -157,6 +232,9 @@ def main(argv: list[str] | None = None) -> int:
         positive_ratio=float(config.get("positive_ratio", 0.5)),
         hard_negative_ratio=float(config.get("hard_negative_ratio", 0.35)),
         seed=int(config.get("seed", 42)),
+        split_strategy=str(config.get("split_strategy", "random")),
+        loco_val_class=config.get("loco_val_class"),
+        loco_fold_index=int(config.get("loco_fold_index", 0)),
     )
     val_dataset = SiamesePairDataset(
         manifest_path=manifest_file,
@@ -167,12 +245,21 @@ def main(argv: list[str] | None = None) -> int:
         positive_ratio=float(config.get("positive_ratio", 0.5)),
         hard_negative_ratio=float(config.get("hard_negative_ratio", 0.35)),
         seed=int(config.get("seed", 42)),
+        split_strategy=str(config.get("split_strategy", "random")),
+        loco_val_class=config.get("loco_val_class"),
+        loco_fold_index=int(config.get("loco_fold_index", 0)),
     )
 
     batch_size = int(config.get("batch_size", 32))
     num_workers = int(config.get("num_workers", 0))
     train_loader = create_loader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
     val_loader = create_loader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+    print(
+        f"split_strategy={config.get('split_strategy', 'random')} "
+        f"train_groups={len(train_dataset.group_ids)} val_groups={len(val_dataset.group_ids)}"
+    )
+    print(f"train_ids={train_dataset.group_ids}")
+    print(f"val_ids={val_dataset.group_ids}")
 
     device = resolve_device(str(config.get("device", "auto")))
     model = SiameseEmbeddingNet(
@@ -180,10 +267,15 @@ def main(argv: list[str] | None = None) -> int:
         embedding_dim=int(config.get("embedding_dim", 128)),
         pretrained_backbone=bool(config.get("pretrained_backbone", True)),
         dropout=float(config.get("dropout", 0.1)),
+        freeze_backbone=bool(config.get("freeze_backbone", False)),
     ).to(device)
-    criterion = ContrastiveLoss(margin=float(config.get("margin", 1.0)))
+    criterion, loss_name = build_criterion(config)
+    criterion = criterion.to(device)
+    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    if not trainable_parameters:
+        raise RuntimeError("No trainable parameters found for Siamese training.")
     optimizer = AdamW(
-        model.parameters(),
+        trainable_parameters,
         lr=float(config.get("lr", 1e-4)),
         weight_decay=float(config.get("weight_decay", 1e-4)),
     )
@@ -193,13 +285,18 @@ def main(argv: list[str] | None = None) -> int:
     history: list[dict[str, Any]] = []
     best_state: dict[str, Any] | None = None
     best_metrics: dict[str, Any] | None = None
-    best_val_loss = float("inf")
+    best_value: float | None = None
+    epochs_without_improvement = 0
+    checkpoint_metric = str(config.get("checkpoint_metric", "val_loss"))
+    early_stopping_patience = int(config.get("early_stopping_patience", 0))
+    early_stopping_min_delta = float(config.get("early_stopping_min_delta", 0.0))
 
     for epoch in range(1, int(config.get("epochs", 10)) + 1):
         train_metrics = run_epoch(
             model=model,
             loader=train_loader,
             criterion=criterion,
+            loss_name=loss_name,
             device=device,
             optimizer=optimizer,
             similarity_threshold=similarity_threshold,
@@ -208,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
             model=model,
             loader=val_loader,
             criterion=criterion,
+            loss_name=loss_name,
             device=device,
             optimizer=None,
             similarity_threshold=similarity_threshold,
@@ -219,18 +317,35 @@ def main(argv: list[str] | None = None) -> int:
             "train": train_metrics,
             "val": val_metrics,
             "lr": round(float(optimizer.param_groups[0]["lr"]), 8),
+            "loss": loss_name,
         }
         history.append(epoch_metrics)
         print(
             f"epoch={epoch} train_loss={train_metrics['loss']:.4f} "
-            f"train_acc={train_metrics['accuracy']:.4f} "
-            f"val_loss={val_metrics['loss']:.4f} val_acc={val_metrics['accuracy']:.4f}"
+            f"train_acc={train_metrics['accuracy']:.4f} train_f1={train_metrics['f1']:.4f} "
+            f"val_loss={val_metrics['loss']:.4f} val_acc={val_metrics['accuracy']:.4f} "
+            f"val_f1={val_metrics['f1']:.4f}"
         )
 
-        if val_metrics["loss"] < best_val_loss:
-            best_val_loss = val_metrics["loss"]
+        improved, current_value = metric_improved(
+            epoch_metrics,
+            best_value,
+            checkpoint_metric,
+            early_stopping_min_delta,
+        )
+        if improved:
+            best_value = current_value
+            epochs_without_improvement = 0
             best_state = copy.deepcopy(model.state_dict())
             best_metrics = copy.deepcopy(epoch_metrics)
+        else:
+            epochs_without_improvement += 1
+            if early_stopping_patience > 0 and epochs_without_improvement >= early_stopping_patience:
+                print(
+                    f"Early stopping after epoch {epoch}: "
+                    f"{checkpoint_metric} did not improve for {early_stopping_patience} epochs."
+                )
+                break
 
     if best_state is None or best_metrics is None:
         raise RuntimeError("Training finished without producing a best checkpoint.")

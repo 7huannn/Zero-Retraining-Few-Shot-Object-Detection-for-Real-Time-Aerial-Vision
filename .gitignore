@@ -28,9 +28,10 @@ result/siamese/*
 
 # Editable clones and large third-party installs.
 third_party/
+ml-mobileclip/
 
-# Optional local MobileCLIP artifact.
-ml-mobileclip/mobileclip_blt.ts
+# Local/demo artifacts generated while experimenting.
+fewshot_input_output_person1.*
 
 *.pt
 *.pdparams
