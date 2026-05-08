@@ -41,6 +41,8 @@ open_clip = _bootstrap_open_clip()
 class InferenceConfig:
     yoloe_conf: float = 0.001
     top_k_proposals: int = 24
+    frame_start: int = 0
+    frame_end: int = 0
     tracker_reinit_interval: int = 10
     edge_proximity_threshold: int = 10
     support_aggregation: str = "mean"
@@ -496,6 +498,14 @@ class VideoInference:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        start_frame = max(0, int(self.config.frame_start))
+        end_frame = int(self.config.frame_end) if int(self.config.frame_end) > 0 else total_frames
+        end_frame = min(total_frames, max(start_frame, end_frame))
+        if start_frame >= total_frames:
+            cap.release()
+            raise RuntimeError(f"frame_start {start_frame} is outside the video length {total_frames}.")
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         self.initialize_for_streaming(preprocessed_data, frame_w, frame_h)
 
         detections: list[dict[str, Any]] = []
@@ -503,8 +513,10 @@ class VideoInference:
         if self.config.save_frames:
             Path(self.config.frames_output_dir).mkdir(parents=True, exist_ok=True)
 
-        frame_limit = self.config.max_frames if self.config.max_frames > 0 else total_frames
-        for frame_idx in range(min(total_frames, frame_limit)):
+        frame_limit = self.config.max_frames if self.config.max_frames > 0 else (end_frame - start_frame)
+        processed_limit = min(end_frame - start_frame, frame_limit)
+        for offset in range(processed_limit):
+            frame_idx = start_frame + offset
             ok, frame = cap.read()
             if not ok or frame is None:
                 break
@@ -538,6 +550,7 @@ class VideoInference:
         cap.release()
 
         frames_with_detection = len({item["frame"] for item in detections})
+        processed_frames = max(0, min(processed_limit, total_frames - start_frame))
         component_stats = {
             key: float(np.mean([item[key] for item in self.accepted_score_components]))
             if self.accepted_score_components
@@ -546,9 +559,11 @@ class VideoInference:
         }
         stats = {
             "total_frames": total_frames,
-            "processed_frames": min(total_frames, frame_limit),
+            "processed_frames": processed_frames,
+            "frame_start": start_frame,
+            "frame_end": end_frame,
             "frames_with_detection": frames_with_detection,
-            "detection_rate": frames_with_detection / max(1, min(total_frames, frame_limit)),
+            "detection_rate": frames_with_detection / max(1, processed_frames),
             "mean_fused_score": float(np.mean(fused_scores)) if fused_scores else 0.0,
             "class_name": preprocessed_data["class_name"],
             "tracker_backend": self.tracker_backend_name or "uninitialized",
@@ -684,6 +699,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--siamese-checkpoint", default="result/siamese/best.pt")
     parser.add_argument("--yoloe-conf", type=float, default=0.001)
     parser.add_argument("--top-k", type=int, default=24)
+    parser.add_argument("--frame-start", type=int, default=0)
+    parser.add_argument("--frame-end", type=int, default=0)
     parser.add_argument("--tracker-reinit", type=int, default=10)
     parser.add_argument("--fused-threshold", type=float, default=0.52)
     parser.add_argument("--clip-threshold", type=float, default=0.10)
@@ -721,6 +738,8 @@ def main(argv: list[str] | None = None) -> int:
     config = InferenceConfig(
         yoloe_conf=args.yoloe_conf,
         top_k_proposals=args.top_k,
+        frame_start=args.frame_start,
+        frame_end=args.frame_end,
         tracker_reinit_interval=args.tracker_reinit,
         support_aggregation=args.support_aggregation,
         w_det=args.w_det,
