@@ -37,13 +37,13 @@ def aggregate_support_scores(scores: np.ndarray, mode: str = "mean") -> float:
 def fuse_scores(
     det_score: float,
     clip_score: float,
-    siam_score: float,
     w_det: float,
     w_clip: float,
-    w_siam: float,
     bonus: float = 0.0,
     penalty: float = 0.0,
+    siam_score: float = 0.0,
+    w_siam: float = 0.0,
 ) -> float:
-    """Weighted fusion for detector + MobileCLIP + Siamese scores."""
+    """Weighted fusion for detector + MobileCLIP + Siamese (optional) scores."""
     value = w_det * det_score + w_clip * clip_score + w_siam * siam_score + bonus - penalty
     return float(np.clip(value, 0.0, 1.0))
