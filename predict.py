@@ -19,7 +19,7 @@ from PIL import Image
 from ultralytics import YOLOE
 
 from fusion import aggregate_support_scores, cosine_to_similarity, fuse_scores, normalize_detector_scores
-from siamese.siamese_model import SiameseVerifier
+from siamese.siamese_model import SiameseVerifier, calibrate_cosine_similarity
 from tracker_adapter import available_tracker_backends, create_tracker
 from utils import seed_everything
 
@@ -107,6 +107,10 @@ class VideoInference:
         if siamese_checkpoint and os.path.exists(siamese_checkpoint):
             self.siamese_verifier = SiameseVerifier(siamese_checkpoint, device=self.device)
             print(f"Loaded Siamese checkpoint: {siamese_checkpoint}")
+            if self.siamese_verifier.calibration is not None:
+                scale = self.siamese_verifier.calibration.get("scale", 1.0)
+                threshold = self.siamese_verifier.calibration.get("threshold", 0.0)
+                print(f"Loaded Siamese calibration: scale={scale:.3f} threshold={threshold:.4f}")
         else:
             print("Siamese checkpoint not found. Siamese branch will be disabled.")
 
@@ -335,7 +339,8 @@ class VideoInference:
                     dim=1,
                 ).detach().cpu().numpy()
                 siam_cos = aggregate_support_scores(siam_scores, self.config.support_aggregation)
-                siam_sim = cosine_to_similarity(siam_cos)
+                calibration = self.siamese_verifier.calibration if self.siamese_verifier is not None else None
+                siam_sim = calibrate_cosine_similarity(siam_cos, calibration)
 
         w_det, w_clip, w_siam = self.config.w_det, self.config.w_clip, self.config.w_siam
         if self.siamese_support_embeddings is None:

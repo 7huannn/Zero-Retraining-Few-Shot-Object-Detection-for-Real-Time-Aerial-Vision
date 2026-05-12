@@ -8,8 +8,10 @@ from pathlib import Path
 import sys
 from typing import Any
 
+import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -78,6 +80,8 @@ def build_criterion(config: dict[str, Any]) -> tuple[nn.Module, str]:
         return ContrastiveLoss(margin=margin), loss_name
     if loss_name in {"triplet", "batch_hard_triplet"}:
         return TripletBatchHardLoss(margin=margin), "triplet"
+    if loss_name in {"triplet_bce", "hybrid"}:
+        return TripletBatchHardLoss(margin=margin), "triplet_bce"
     raise ValueError(f"Unsupported Siamese loss: {loss_name}")
 
 
@@ -105,6 +109,83 @@ def classification_metrics(tp: int, fp: int, fn: int) -> dict[str, float]:
     }
 
 
+def binary_metrics_from_scores(
+    scores: np.ndarray,
+    labels: np.ndarray,
+    threshold: float,
+) -> dict[str, float]:
+    """Compute accuracy/precision/recall/F1 from raw cosine scores."""
+    predictions = scores >= threshold
+    positives = labels >= 0.5
+    tp = int(np.sum(predictions & positives))
+    fp = int(np.sum(predictions & ~positives))
+    fn = int(np.sum(~predictions & positives))
+    tn = int(np.sum(~predictions & ~positives))
+    accuracy = (tp + tn) / max(1, labels.size)
+    metrics = {"accuracy": round(float(accuracy), 6)}
+    metrics.update(classification_metrics(tp, fp, fn))
+    return metrics
+
+
+def find_best_similarity_threshold(scores: list[float], labels: list[float]) -> tuple[float, dict[str, float]]:
+    """Sweep thresholds and select the best F1 operating point."""
+    if not scores or not labels or len(scores) != len(labels):
+        return 0.65, {"accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0}
+    score_array = np.asarray(scores, dtype=np.float32)
+    label_array = np.asarray(labels, dtype=np.float32)
+    lo = float(score_array.min())
+    hi = float(score_array.max())
+    if hi - lo < 1e-6:
+        threshold = float(np.clip((hi + lo) * 0.5, -1.0, 1.0))
+        return threshold, binary_metrics_from_scores(score_array, label_array, threshold)
+
+    candidates = np.linspace(lo, hi, num=201, dtype=np.float32)
+    best_threshold = float(candidates[0])
+    best_metrics = binary_metrics_from_scores(score_array, label_array, best_threshold)
+    for threshold in candidates[1:]:
+        metrics = binary_metrics_from_scores(score_array, label_array, float(threshold))
+        if metrics["f1"] > best_metrics["f1"] + 1e-9:
+            best_threshold = float(threshold)
+            best_metrics = metrics
+        elif abs(metrics["f1"] - best_metrics["f1"]) <= 1e-9 and metrics["accuracy"] > best_metrics["accuracy"]:
+            best_threshold = float(threshold)
+            best_metrics = metrics
+    return best_threshold, best_metrics
+
+
+def build_calibration(
+    scores: list[float],
+    labels: list[float],
+    threshold: float,
+) -> dict[str, float]:
+    """Build a lightweight logistic calibration from validation distributions."""
+    if not scores or not labels or len(scores) != len(labels):
+        return {"scale": 1.0, "bias": 0.0, "threshold": threshold}
+    score_array = np.asarray(scores, dtype=np.float32)
+    label_array = np.asarray(labels, dtype=np.float32)
+    pos = score_array[label_array >= 0.5]
+    neg = score_array[label_array < 0.5]
+    if pos.size == 0 or neg.size == 0:
+        return {"scale": 1.0, "bias": -threshold, "threshold": threshold}
+
+    pos_mean = float(np.mean(pos))
+    neg_mean = float(np.mean(neg))
+    pos_var = float(np.var(pos))
+    neg_var = float(np.var(neg))
+    pooled_var = max(1e-5, 0.5 * (pos_var + neg_var))
+    scale = float(np.clip((pos_mean - neg_mean) / pooled_var, 0.1, 40.0))
+    bias = float(np.clip(-scale * threshold, -20.0, 20.0))
+    return {
+        "scale": scale,
+        "bias": bias,
+        "threshold": float(threshold),
+        "pos_mean": pos_mean,
+        "neg_mean": neg_mean,
+        "pos_std": float(np.std(pos)),
+        "neg_std": float(np.std(neg)),
+    }
+
+
 def run_epoch(
     model: SiameseEmbeddingNet,
     loader: DataLoader,
@@ -113,7 +194,11 @@ def run_epoch(
     device: torch.device,
     optimizer: AdamW | None,
     similarity_threshold: float,
-) -> dict[str, float]:
+    triplet_weight: float = 1.0,
+    pair_bce_weight: float = 0.0,
+    pair_bce_scale: float = 12.0,
+    collect_scores: bool = False,
+) -> dict[str, Any]:
     """Run one train or validation epoch and collect metrics."""
     is_training = optimizer is not None
     model.train(is_training)
@@ -125,6 +210,8 @@ def run_epoch(
     true_positive = 0
     false_positive = 0
     false_negative = 0
+    all_scores: list[float] = []
+    all_labels: list[float] = []
 
     for batch in loader:
         image_a = batch["image_a"].to(device)
@@ -138,6 +225,14 @@ def run_epoch(
             embedding_a, embedding_b = model(image_a, image_b)
             if loss_name == "triplet":
                 loss = criterion(torch.cat([embedding_a, embedding_b], dim=0), batch_sample_labels(batch, device))
+            elif loss_name == "triplet_bce":
+                triplet_loss = criterion(
+                    torch.cat([embedding_a, embedding_b], dim=0),
+                    batch_sample_labels(batch, device),
+                )
+                cosine_scores = cosine_similarity(embedding_a, embedding_b)
+                bce_loss = F.binary_cross_entropy_with_logits(cosine_scores * pair_bce_scale, labels)
+                loss = (triplet_weight * triplet_loss) + (pair_bce_weight * bce_loss)
             else:
                 loss = criterion(embedding_a, embedding_b, labels)
             if is_training:
@@ -157,6 +252,9 @@ def run_epoch(
         true_positive += int((predicted_positive & actual_positive).sum().item())
         false_positive += int((predicted_positive & ~actual_positive).sum().item())
         false_negative += int((~predicted_positive & actual_positive).sum().item())
+        if collect_scores:
+            all_scores.extend(cosine_scores.detach().cpu().tolist())
+            all_labels.extend(labels.detach().cpu().tolist())
 
     if total_samples == 0:
         raise RuntimeError("No samples were produced for this epoch.")
@@ -167,6 +265,9 @@ def run_epoch(
         "mean_cosine": round(total_cosine / total_samples, 6),
     }
     metrics.update(classification_metrics(true_positive, false_positive, false_negative))
+    if collect_scores:
+        metrics["raw_scores"] = all_scores
+        metrics["raw_labels"] = all_labels
     return metrics
 
 
@@ -185,6 +286,9 @@ def metric_improved(
         return best_value is None or value > best_value + min_delta, value
     if metric_name == "val_f1":
         value = float(epoch_metrics["val"]["f1"])
+        return best_value is None or value > best_value + min_delta, value
+    if metric_name == "val_f1_opt":
+        value = float(epoch_metrics["val"].get("f1_opt", epoch_metrics["val"]["f1"]))
         return best_value is None or value > best_value + min_delta, value
     raise ValueError(f"Unsupported checkpoint metric: {metric_name}")
 
@@ -281,10 +385,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=max(1, int(config.get("epochs", 10))))
     similarity_threshold = float(config.get("similarity_threshold", 0.65))
+    auto_threshold = bool(config.get("auto_similarity_threshold", True))
+    triplet_weight = float(config.get("triplet_weight", 1.0))
+    pair_bce_weight = float(config.get("pair_bce_weight", 0.0))
+    pair_bce_scale = float(config.get("pair_bce_scale", 12.0))
 
     history: list[dict[str, Any]] = []
     best_state: dict[str, Any] | None = None
     best_metrics: dict[str, Any] | None = None
+    best_calibration: dict[str, float] | None = None
     best_value: float | None = None
     epochs_without_improvement = 0
     checkpoint_metric = str(config.get("checkpoint_metric", "val_loss"))
@@ -292,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     early_stopping_min_delta = float(config.get("early_stopping_min_delta", 0.0))
 
     for epoch in range(1, int(config.get("epochs", 10)) + 1):
+        train_dataset.set_epoch(epoch)
         train_metrics = run_epoch(
             model=model,
             loader=train_loader,
@@ -300,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
             device=device,
             optimizer=optimizer,
             similarity_threshold=similarity_threshold,
+            triplet_weight=triplet_weight,
+            pair_bce_weight=pair_bce_weight,
+            pair_bce_scale=pair_bce_scale,
         )
         val_metrics = run_epoch(
             model=model,
@@ -309,7 +422,23 @@ def main(argv: list[str] | None = None) -> int:
             device=device,
             optimizer=None,
             similarity_threshold=similarity_threshold,
+            triplet_weight=triplet_weight,
+            pair_bce_weight=pair_bce_weight,
+            pair_bce_scale=pair_bce_scale,
+            collect_scores=auto_threshold,
         )
+        current_calibration = None
+        if auto_threshold:
+            raw_scores = list(val_metrics.pop("raw_scores", []))
+            raw_labels = list(val_metrics.pop("raw_labels", []))
+            best_threshold, opt_metrics = find_best_similarity_threshold(raw_scores, raw_labels)
+            val_metrics["similarity_threshold_opt"] = round(float(best_threshold), 6)
+            val_metrics["accuracy_opt"] = round(float(opt_metrics["accuracy"]), 6)
+            val_metrics["precision_opt"] = round(float(opt_metrics["precision"]), 6)
+            val_metrics["recall_opt"] = round(float(opt_metrics["recall"]), 6)
+            val_metrics["f1_opt"] = round(float(opt_metrics["f1"]), 6)
+            current_calibration = build_calibration(raw_scores, raw_labels, best_threshold)
+            similarity_threshold = float(best_threshold)
         scheduler.step()
 
         epoch_metrics = {
@@ -324,7 +453,9 @@ def main(argv: list[str] | None = None) -> int:
             f"epoch={epoch} train_loss={train_metrics['loss']:.4f} "
             f"train_acc={train_metrics['accuracy']:.4f} train_f1={train_metrics['f1']:.4f} "
             f"val_loss={val_metrics['loss']:.4f} val_acc={val_metrics['accuracy']:.4f} "
-            f"val_f1={val_metrics['f1']:.4f}"
+            f"val_f1={val_metrics['f1']:.4f} "
+            f"val_f1_opt={val_metrics.get('f1_opt', val_metrics['f1']):.4f} "
+            f"thr={val_metrics.get('similarity_threshold_opt', similarity_threshold):.4f}"
         )
 
         improved, current_value = metric_improved(
@@ -338,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
             epochs_without_improvement = 0
             best_state = copy.deepcopy(model.state_dict())
             best_metrics = copy.deepcopy(epoch_metrics)
+            best_calibration = copy.deepcopy(current_calibration)
         else:
             epochs_without_improvement += 1
             if early_stopping_patience > 0 and epochs_without_improvement >= early_stopping_patience:
@@ -362,21 +494,25 @@ def main(argv: list[str] | None = None) -> int:
             "manifest_path": str(manifest_file),
             "checkpoint_dir": str(checkpoint_dir),
             "image_size": image_size,
+            "similarity_threshold": float(similarity_threshold),
         }
     )
+    checkpoint_extra: dict[str, Any] = {"manifest_stats": manifest.get("stats", {})}
+    if best_calibration is not None:
+        checkpoint_extra["calibration"] = best_calibration
     save_siamese_checkpoint(
         checkpoint_dir / "best.pt",
         model=best_model,
         config=used_config,
         metrics=best_metrics,
-        extra={"manifest_stats": manifest.get("stats", {})},
+        extra=checkpoint_extra,
     )
     save_siamese_checkpoint(
         checkpoint_dir / "last.pt",
         model=model,
         config=used_config,
         metrics=history[-1],
-        extra={"manifest_stats": manifest.get("stats", {})},
+        extra=checkpoint_extra,
     )
     save_json(checkpoint_dir / "history.json", history)
     save_json(checkpoint_dir / "metrics.json", {"best": best_metrics, "last": history[-1], "manifest": manifest.get("stats", {})})

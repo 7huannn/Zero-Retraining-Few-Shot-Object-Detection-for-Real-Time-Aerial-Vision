@@ -272,6 +272,7 @@ class SiamesePairDataset(Dataset):
 
         self.split = split
         self.seed = seed
+        self.epoch = 0
         self.num_pairs = num_pairs
         self.positive_ratio = positive_ratio
         self.hard_negative_ratio = hard_negative_ratio
@@ -279,6 +280,10 @@ class SiamesePairDataset(Dataset):
 
     def __len__(self) -> int:
         return self.num_pairs
+
+    def set_epoch(self, epoch: int) -> None:
+        """Allow the trainer to resample different pairs every epoch."""
+        self.epoch = max(0, int(epoch))
 
     def _load_image(self, record: CropRecord) -> torch.Tensor:
         with Image.open(record.image_path) as image:
@@ -304,8 +309,13 @@ class SiamesePairDataset(Dataset):
         return rng.choice(different_groups)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
-        rng = random.Random(self.seed + index)
-        anchor_group_id = self.group_ids[index % len(self.group_ids)] if self.split == "val" else rng.choice(self.group_ids)
+        if self.split == "train":
+            epoch_seed = self.seed + (self.epoch * 1_000_003)
+            rng = random.Random(epoch_seed + index)
+            anchor_group_id = rng.choice(self.group_ids)
+        else:
+            rng = random.Random(self.seed + index)
+            anchor_group_id = self.group_ids[index % len(self.group_ids)]
         anchor_records = self.groups[anchor_group_id]
         anchor = rng.choice(anchor_records)
         is_positive = rng.random() < self.positive_ratio
