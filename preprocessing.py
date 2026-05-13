@@ -1,4 +1,7 @@
-"""Preprocess reference data for YOLOE and optional Siamese verification."""
+"""Preprocess reference data for the main YOLOE pipeline.
+
+Siamese embedding export is kept only for legacy/research workflows.
+"""
 
 from __future__ import annotations
 
@@ -446,12 +449,16 @@ def build_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
-    parser = argparse.ArgumentParser(description="Prepare YOLOE reference data and optional Siamese embeddings.")
+    parser = argparse.ArgumentParser(description="Prepare YOLOE reference data for inference.")
     parser.add_argument("--dataset", type=Path, default=Path("data/train"))
     parser.add_argument("--output-dir", type=Path, default=Path("preprocessed_data/train"))
     parser.add_argument("--yolov8-weights", type=Path, default=Path("models/yolov8n.pt"))
     parser.add_argument("--yoloe-weights", type=Path, default=Path("models/yoloe-11s-seg.pt"))
-    parser.add_argument("--siamese-checkpoint", type=Path)
+    parser.add_argument(
+        "--siamese-checkpoint",
+        type=Path,
+        help="Legacy/research option: export Siamese embeddings during preprocessing.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--yolov8-conf", type=float, default=0.1)
     parser.add_argument("--top-k-detections", type=int, default=1)

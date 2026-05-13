@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <code>YOLOE Visual Prompt</code> · <code>MobileCLIP2</code> · <code>Siamese Verifier</code> · <code>KCF Tracking</code> · <code>JSON Submission</code>
+  <code>YOLOE Visual Prompt</code> · <code>MobileCLIP2</code> · <code>KCF Tracking</code> · <code>JSON Submission</code>
 </p>
 
 ## Tổng Quan
@@ -31,10 +31,9 @@ Bài toán được xử lý theo thiết lập few-shot cho video drone:
 </p>
 
 1. `preprocessing.py` tạo YOLOE visual prompt embeddings từ ảnh reference và các background augmentation.
-2. `predict.py` dùng YOLOE để sinh object proposals trên từng query frame.
+2. `inference.py` dùng YOLOE để sinh object proposals trên từng query frame.
 3. MobileCLIP2 so khớp từng proposal crop với các support crops.
-4. Siamese branch bổ sung similarity score phụ nếu có checkpoint.
-5. `fusion.py` chuẩn hóa và gộp detector score, CLIP score và Siamese score.
+4. `fusion.py` chuẩn hóa và gộp detector score, CLIP score cùng tracker bonus.
 6. KCF tracker duy trì bbox ổn định giữa các lần detector re-init.
 7. Kết quả cuối được xuất thành JSON, kèm debug frames, report và plot nếu bật tùy chọn tương ứng.
 
@@ -47,8 +46,9 @@ Bài toán được xử lý theo thiết lập few-shot cho video drone:
 ├── models/                         # Model weights local, ignore khỏi git
 ├── preprocessed_data/              # VPE/features sinh ra từ preprocessing
 ├── result/                         # Submission, report, plot, checkpoint
-├── preprocessing.py                # Tạo reference crops, VPE, Siamese embeddings
-├── predict.py                      # Hybrid inference + tracker + reporting
+├── preprocessing.py                # Tạo reference crops và VPE
+├── inference.py                    # Main inference + tracker + reporting
+├── predict.py                      # Legacy wrapper, forward sang inference.py
 ├── predict.sh                      # Runner end-to-end cho public test
 ├── fusion.py                       # Chuẩn hóa và weighted fusion score
 ├── tracker_adapter.py              # Chọn backend KCF tracker
@@ -78,14 +78,13 @@ Các dependency chính:
 
 | Dependency | Vai trò |
 | --- | --- |
-| `torch`, `torchvision` | Inference model và Siamese training |
+| `torch`, `torchvision` | Inference model |
 | `ultralytics` | Load YOLOE/YOLO |
 | `opencv-contrib-python` | KCF tracker |
-| `timm` | Backbone cho Siamese |
 | `scikit-learn` | Tiện ích preprocessing và thống kê màu |
 | `matplotlib` | Vẽ biểu đồ kết quả inference |
 
-`predict.py` import MobileCLIP qua local checkout `ml-mobileclip/open_clip/src`. Thư mục `ml-mobileclip/` đang bị ignore khỏi git nhưng vẫn phải tồn tại trên máy chạy.
+`inference.py` import MobileCLIP qua local checkout `ml-mobileclip/open_clip/src`. Thư mục `ml-mobileclip/` đang bị ignore khỏi git nhưng vẫn phải tồn tại trên máy chạy.
 
 ## Artifact Cần Chuẩn Bị
 
@@ -99,11 +98,7 @@ models/
 └── mobileclip2_image_encoder_fp16.pt
 ```
 
-Siamese checkpoint, nếu dùng:
-
-```text
-result/siamese/best.pt
-```
+`result/siamese/best.pt` chỉ cần khi bạn chạy các script trong thư mục `siamese/` (không dùng trong main inference pipeline).
 
 Layout public test:
 
@@ -162,7 +157,6 @@ TOP_K=24 \
 FUSED_THRESHOLD=0.52 \
 W_DET=0.30 \
 W_CLIP=0.35 \
-W_SIAM=0.35 \
 SIMILARITY_ADD_THRESHOLD=0.80 \
 NUM_BACKGROUNDS=4 \
 MIN_AUG_SCALE=0.04 \
@@ -178,7 +172,7 @@ Best proxy config hiện tại:
 | `yoloe_conf` | `0.001` |
 | `top_k_proposals` | `24` |
 | `fused_accept_threshold` | `0.52` |
-| `w_det` / `w_clip` / `w_siam` | `0.30` / `0.35` / `0.35` |
+| `w_det` / `w_clip` | `0.30` / `0.35` |
 | `similarity_add_threshold` | `0.80` |
 | `max_reference_samples` | `20` |
 | `crop_padding_ratio` | `0.04` |
@@ -202,7 +196,6 @@ python preprocessing.py \
   --output-dir preprocessed_data/public_test \
   --yoloe-weights models/yoloe-11l-seg.pt \
   --yolov8-weights models/yolov8n.pt \
-  --siamese-checkpoint result/siamese/best.pt \
   --num-backgrounds 4 \
   --min-aug-scale 0.04 \
   --max-aug-scale 0.20 \
@@ -224,7 +217,7 @@ python preprocessing.py \
 Chạy với cấu hình mặc định:
 
 ```bash
-python predict.py \
+python inference.py \
   --preprocessed-dir preprocessed_data/public_test \
   --output-json result/submission.json
 ```
@@ -232,18 +225,16 @@ python predict.py \
 Reproduce best proxy config:
 
 ```bash
-python predict.py \
+python inference.py \
   --preprocessed-dir preprocessed_data/public_test \
   --output-json result/submission.json \
   --yoloe-weights models/yoloe-11l-seg.pt \
   --clip-encoder-path models/mobileclip2_image_encoder_fp16.pt \
-  --siamese-checkpoint result/siamese/best.pt \
   --yoloe-conf 0.001 \
   --top-k 24 \
   --fused-threshold 0.52 \
   --w-det 0.30 \
   --w-clip 0.35 \
-  --w-siam 0.35 \
   --similarity-add-threshold 0.80 \
   --max-reference-samples 20 \
   --crop-padding-ratio 0.04
@@ -252,7 +243,7 @@ python predict.py \
 Lưu debug frames để kiểm tra trực quan:
 
 ```bash
-python predict.py \
+python inference.py \
   --preprocessed-dir preprocessed_data/public_test \
   --output-json result/debug_subset.json \
   --limit-videos 1 \
@@ -261,9 +252,9 @@ python predict.py \
   --frames-output-dir result/debug_frames
 ```
 
-## Siamese Verifier
+## Siamese Verifier (Legacy/Research)
 
-Siamese verifier được train từ các crop có annotation và dùng như một nhánh similarity phụ trong inference.
+Các script Siamese vẫn được giữ để nghiên cứu/tuning riêng, nhưng không còn nằm trong inference pipeline chính của nhánh `main`.
 
 Train:
 

@@ -371,6 +371,34 @@ class FewShotDetectionPipeline:
         self.tracker = None
         return None, 0.0
 
+    @staticmethod
+    def _sanitize_bbox_for_output(
+        bbox: tuple[int, int, int, int] | list[int],
+        frame_w: int,
+        frame_h: int,
+    ) -> tuple[int, int, int, int] | None:
+        """Clamp bbox to valid inclusive pixel coordinates for exported JSON."""
+        x1, y1, x2, y2 = map(int, bbox)
+        if frame_w <= 1 or frame_h <= 1:
+            return None
+        x1 = max(0, min(x1, frame_w - 1))
+        y1 = max(0, min(y1, frame_h - 1))
+        x2 = max(0, min(x2, frame_w - 1))
+        y2 = max(0, min(y2, frame_h - 1))
+        if x2 <= x1:
+            if x1 < frame_w - 1:
+                x2 = x1 + 1
+            else:
+                x1 = max(0, x1 - 1)
+        if y2 <= y1:
+            if y1 < frame_h - 1:
+                y2 = y1 + 1
+            else:
+                y1 = max(0, y1 - 1)
+        if not (0 <= x1 < x2 < frame_w and 0 <= y1 < y2 < frame_h):
+            return None
+        return (x1, y1, x2, y2)
+
     def process_video(self, video_path: str, preprocessed_data: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """
         Process entire video.
@@ -427,7 +455,10 @@ class FewShotDetectionPipeline:
             bbox, fused_score = self.predict_frame(frame, frame_idx)
 
             if bbox is not None:
-                x1, y1, x2, y2 = bbox
+                sanitized_bbox = self._sanitize_bbox_for_output(bbox, frame_w, frame_h)
+                if sanitized_bbox is None:
+                    continue
+                x1, y1, x2, y2 = sanitized_bbox
                 detections.append(
                     {
                         "frame": frame_idx,

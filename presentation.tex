@@ -265,6 +265,8 @@
         \item Lấy frame nền từ video query để làm augmentation.
         \item Từ prompt tổng hợp, YOLOE sinh \keyterm{Visual Prompt Embedding}; lưu VPE, reference crops và metadata.
       \end{enumerate}
+      \vspace{0.06cm}
+      {\scriptsize\color{DeepBlue}\bfseries Lưu ý:} {\scriptsize MobileCLIP2 \textbf{không} được encode ở preprocess; support embeddings được tạo khi khởi tạo inference từ \texttt{reference\_crops.npy}.}
     \end{column}
     \begin{column}{0.41\textwidth}
       \begin{bluebox}{Config hiện tại}
@@ -433,6 +435,19 @@
   \end{columns}
 \end{frame}
 
+\begin{frame}{Minh họa YOLOE + MobileCLIP2}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{result/debug_demo_check/model_yoloe_panel.jpg}
+      \imgcap{YOLOE sinh nhiều proposal trên query frame; bbox xanh là candidate được chọn.}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{result/debug_demo_check/model_mobileclip_panel.jpg}
+      \imgcap{MobileCLIP2 so khớp candidate crop với 3 ảnh support để xác thực instance.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
 \begin{frame}{Score Fusion và Reference Gallery}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.50\textwidth}
@@ -496,6 +511,12 @@
       \end{bluebox}
     \end{column}
   \end{columns}
+\end{frame}
+
+\begin{frame}{Minh họa KCF Tracking}
+  \centering
+  \includegraphics[width=\linewidth,height=0.83\textheight,keepaspectratio]{result/debug_demo_check/model_kcf_tracking_strip.jpg}
+  \imgcap{Chuỗi frame liên tiếp cho thấy bbox được duy trì ổn định theo thời gian.}
 \end{frame}
 
 \begin{frame}{Luồng xử lý một Frame}
@@ -566,90 +587,161 @@
     \begin{minipage}{0.45\textwidth}
       \centering
       \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/debug_demo_check/final_best_12s_zoom_contact.jpg}
-      \imgcap{BlackBox: bbox bám mục tiêu trong frame query.}
+      \imgcap{Backpack\_0 (train): bbox render trực tiếp từ \texttt{submission\_train.json}.}
     \end{minipage}
     &
     \begin{minipage}{0.45\textwidth}
       \centering
       \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/debug_demo_check/blackbox_submission_contact.jpg}
-      \imgcap{Output bbox và score trong submission/debug.}
+      \imgcap{LifeJacket\_0 (public): bbox render từ \texttt{submission.json}.}
     \end{minipage}
     \\
     \begin{minipage}{0.45\textwidth}
       \centering
       \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/debug_demo_check/final_15s_zoom_contact.jpg}
-      \imgcap{Zoom vùng mục tiêu để kiểm tra trực quan.}
+      \imgcap{WaterBottle\_1 (train): zoom vùng bbox từ \texttt{submission\_train.json}.}
     \end{minipage}
     &
     \begin{minipage}{0.45\textwidth}
       \centering
       \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/debug_demo_check/blackbox_15s_contact.jpg}
-      \imgcap{Trường hợp khó: mục tiêu nhỏ, nền rộng từ drone.}
+      \imgcap{CardboardBox\_0 (public): trường hợp khó với nền drone phức tạp.}
     \end{minipage}
   \end{tabular}
 \end{frame}
 
-\begin{frame}{Thống kê Public Test}
+\begin{frame}{Experiment A: BBox Count theo Video}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.54\textwidth}
-      \includegraphics[width=\linewidth]{result/submission_stats.png}
-      \imgcap{Detection rate trên 6 video public test trong output hiện tại.}
+    \begin{column}{0.57\textwidth}
+      \includegraphics[width=\linewidth]{result/experiment_bbox_count_by_video.png}
+      \imgcap{Số bbox xuất ra theo từng video từ \texttt{submission\_train.json} và \texttt{submission.json}.}
     \end{column}
-    \begin{column}{0.43\textwidth}
+    \begin{column}{0.40\textwidth}
       \scriptsize
       \begin{tabularx}{\linewidth}{Xrr}
         \toprule
-        \bfseries Video & \bfseries Frames & \bfseries Det.\,rate \\
+        \bfseries Split & \bfseries Videos & \bfseries Total bbox \\
         \midrule
-        BlackBox\_0 & 5{,}443 & 40.40\% \\
-        BlackBox\_1 & 5{,}776 & 40.41\% \\
-        CardboardBox\_0 & 5{,}285 & 1.38\% \\
-        CardboardBox\_1 & 5{,}942 & 2.32\% \\
-        LifeJacket\_0 & 8{,}309 & 44.59\% \\
-        LifeJacket\_1 & 4{,}820 & 41.74\% \\
+        Train & 14 & 22{,}384 \\
+        Public & 6 & 16{,}015 \\
         \bottomrule
       \end{tabularx}
       \vspace{0.15cm}
-      {\color{DeepBlue}\bfseries Nhận xét:} BlackBox và LifeJacket đạt khoảng 40--45\%; CardboardBox là class khó nhất.
+      {\color{DeepBlue}\bfseries Mean bbox/video:} train \(1{,}598.86\), public \(2{,}669.17\).\par
+      \vspace{0.06cm}
+      {\color{DeepBlue}\bfseries Max/Min bbox:} Backpack\_0 \(4{,}206\), Lifering\_0 \(168\) (train); LifeJacket\_0 \(4{,}114\), CardboardBox\_0 \(1{,}862\) (public).
     \end{column}
   \end{columns}
 \end{frame}
 
-\begin{frame}{Đánh giá Hiện tại}
+\begin{frame}{Experiment B: Frame-span Coverage}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.48\textwidth}
-      \begin{bluebox}{Full public test}
+    \begin{column}{0.57\textwidth}
+      \includegraphics[width=\linewidth,height=0.47\textheight,keepaspectratio]{result/experiment_span_coverage_by_video.png}
+      \imgcap{Span coverage theo từng video.}
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \begin{bluebox}{Coverage summary}
         \scriptsize
         \begin{tabular}{lr}
-          Số video & 6 \\
-          Tổng processed frames & 35{,}575 \\
-          Mean detection rate & 28.47\% \\
-          Mean fused score & 0.560 \\
-          Mean Det / CLIP & 1.000 / 0.744 \\
-          Best video & LifeJacket\_0 (44.59\%) \\
-          Worst video & CardboardBox\_0 (1.38\%) \\
+          Train mean & 30.06\% \\
+          Public mean & 45.67\% \\
+          Train worst & Lifering\_0 (4.19\%) \\
+          Public worst & CardboardBox\_0 (35.95\%) \\
         \end{tabular}
       \end{bluebox}
       \vspace{0.12cm}
-      \begin{bluebox}{Tracker counters trong report}
+      \scriptsize
+      Coverage được tính từ JSON output:
+      \( \#\text{frame có bbox} / (\text{max frame} - \text{min frame} + 1) \).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Experiment C: Train vs Annotations (IoU@0.5)}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.57\textwidth}
+      \includegraphics[width=\linewidth,height=0.46\textheight,keepaspectratio]{result/experiment_train_vs_annotations_iou50.png}
+      \imgcap{So sánh trực tiếp \texttt{submission\_train.json} với \texttt{data/train/annotations/annotations.json}.}
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \begin{bluebox}{Global metric (IoU \(\ge\) 0.5)}
         \scriptsize
         \begin{tabular}{lr}
-          Tracker init count & 0 \\
-          Successful updates & 0 \\
-          Tracker bbox returns & 0 \\
+          TP / FP / FN & 4497 / 17887 / 15719 \\
+          Precision & 20.09\% \\
+          Recall & 22.24\% \\
+          F1-score & 21.11\% \\
+          Mean IoU (TP) & 74.21\% \\
+        \end{tabular}
+      \end{bluebox}
+      \vspace{0.1cm}
+      \scriptsize
+      Worst frame-hit: Lifering\_0 \(0.0\%\), WaterBottle\_0 \(0.0\%\), Jacket\_0 \(0.9\%\).\par
+      Best frame-hit: Backpack\_1 \(90.8\%\), Jacket\_1 \(48.8\%\), Backpack\_0 \(44.9\%\).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Metric Snapshot: YOLOE + MobileCLIP2}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.63\textwidth}
+      \includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{result/experiment_metric_snapshot.png}
+      \imgcap{Metric của pipeline hiện tại (không dùng Siamese).}
+    \end{column}
+    \begin{column}{0.35\textwidth}
+      \begin{bluebox}{Điểm chính}
+        \scriptsize
+        \begin{tabular}{lr}
+          Precision @IoU 0.3 & 41.04\% \\
+          Recall @IoU 0.3 & 26.32\% \\
+          F1 @IoU 0.3 & 32.07\% \\
+          F1 @IoU 0.5 & 21.11\% \\
+          Mean IoU(TP) @0.5 & 74.21\% \\
+        \end{tabular}
+      \end{bluebox}
+      \vspace{0.1cm}
+      \scriptsize
+      \texttt{submission*.json} hiện không lưu trường \texttt{score}, nên slide này tập trung vào metric end-to-end train-vs-annotation thay vì score decomposition theo branch.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Đánh giá từ 2 JSON Output}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \begin{bluebox}{Tổng quan}
+        \scriptsize
+        \begin{tabular}{lr}
+          Số file JSON & 2 \\
+          Tổng video & 20 \\
+          Tổng bbox & 38{,}399 \\
+          Train total bbox & 22{,}384 \\
+          Public total bbox & 16{,}015 \\
+          Chênh mean bbox/video & +1{,}070.31 (public) \\
         \end{tabular}
       \end{bluebox}
     \end{column}
     \begin{column}{0.48\textwidth}
       \begin{itemize}
         \tightitem
-        \item Public test không có ground truth trong repo, nên chưa thể tính IoU/mAP chính thức.
-        \item Detection rate ở đây là tỷ lệ frame có bbox được xuất, không phải độ chính xác tuyệt đối.
-        \item Score hiện tại phản ánh confidence sau fusion detector + MobileCLIP2.
-        \item CardboardBox thấp do đối tượng ít đặc trưng, màu/texture dễ lẫn với nền.
+        \item Các con số trong phần experiment được tính trực tiếp từ hai file submission hiện có.
+        \item Không phụ thuộc report cũ nên thuận tiện để so sánh nhanh giữa train/public outputs.
+        \item Phân tích này tập trung vào mật độ bbox và độ phủ theo thời gian trong từng video.
       \end{itemize}
     \end{column}
   \end{columns}
+\end{frame}
+
+\begin{frame}{Experiment D: Limitation Cases}
+  \centering
+  \includegraphics[width=\linewidth,height=0.74\textheight,keepaspectratio]{result/debug_demo_check/summary_limitations_4_vertical.jpg}
+  \imgcap{4 nhóm hạn chế minh họa trực tiếp từ output train/public: support-view gap, object nhỏ, drift risk, và ổn định trên video dài.}
+  \vspace{0.06cm}
+  \begin{bluebox}{Ghi chú về score train}
+    \scriptsize
+    \texttt{submission\_train.json} hiện không lưu trường \texttt{score} theo bbox; vì vậy phần experiment dùng proxy gồm bbox count và frame-span coverage.
+  \end{bluebox}
 \end{frame}
 
 \begin{frame}{Phân tích Kết quả}
@@ -691,12 +783,12 @@
     \begin{column}{0.41\textwidth}
       \begin{bluebox}{Class khó nhất}
         \scriptsize
-        CardboardBox\_0: 1.38\% detection rate\par
-        CardboardBox\_1: 2.32\% detection rate\par\vspace{0.1cm}
-        Nguyên nhân chính: hình dạng và màu sắc dễ lẫn với mặt đất/cỏ trong góc nhìn drone.
+        CardboardBox\_0: 35.95\% span coverage\par
+        CardboardBox\_1: 41.50\% span coverage\par\vspace{0.1cm}
+        Ở train split, Lifering\_0 chỉ đạt 4.19\% span coverage.
       \end{bluebox}
       \vspace{0.18cm}
-      \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/submission_stats.png}
+      \includegraphics[width=\linewidth,height=0.25\textheight,keepaspectratio]{result/experiment_span_coverage_by_video.png}
     \end{column}
   \end{columns}
 \end{frame}

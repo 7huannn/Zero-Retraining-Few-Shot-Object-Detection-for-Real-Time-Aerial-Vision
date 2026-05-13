@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023/Debian) (preloaded format=xelatex 2025.12.27)  11 MAY 2026 20:37
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023/Debian) (preloaded format=xelatex 2025.12.27)  12 MAY 2026 21:33
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1219,115 +1219,139 @@ File: figures/preprocessing/augmented_prompt_blackbox0.jpg Graphic file (type b
 mp)
 <figures/preprocessing/augmented_prompt_blackbox0.jpg>
 
-Overfull \hbox (18.39723pt too wide) in paragraph at lines 282--282
+Overfull \hbox (18.39723pt too wide) in paragraph at lines 284--284
  [][] 
  []
 
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 282--282
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 284--284
 [][][][][]  
  []
 
 
-Overfull \vbox (0.51984pt too high) detected at line 282
+Overfull \vbox (43.64293pt too high) detected at line 284
  []
 
 [6
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 314--314
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 316--316
 [][][][][]  
  []
 
 [7
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 354--354
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 356--356
 [][][][][]  
  []
 
 [8
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 373--373
+Underfull \hbox (badness 10000) in paragraph at lines 375--375
 []|\TU/lmtt/m/n/10 FewShotDetectionPipeline\TU/NotoSans(0)/m/n/10 : điều phối t
 oàn bộ video, xuất
  []
 
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 373--373
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 375--375
 [][][][][]  
  []
 
 
-Overfull \vbox (5.46394pt too high) detected at line 373
+Overfull \vbox (5.46394pt too high) detected at line 375
  []
 
 [9
 
 ]
-Overfull \hbox (8.70451pt too wide) in paragraph at lines 405--405
+Overfull \hbox (8.70451pt too wide) in paragraph at lines 407--407
  [][] 
  []
 
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 405--405
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 407--407
 [][][][][]  
  []
 
 
-Overfull \vbox (3.92pt too high) detected at line 405
+Overfull \vbox (3.92pt too high) detected at line 407
  []
 
 [10
 
 ]
-Overfull \hbox (13.10684pt too wide) in paragraph at lines 434--434
+Overfull \hbox (13.10684pt too wide) in paragraph at lines 436--436
  [][] 
  []
 
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 434--434
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 436--436
 [][][][][]  
  []
 
 [11
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 468--468
+File: result/debug_demo_check/model_yoloe_panel.jpg Graphic file (type bmp)
+<result/debug_demo_check/model_yoloe_panel.jpg>
+File: result/debug_demo_check/model_mobileclip_panel.jpg Graphic file (type bmp
+)
+<result/debug_demo_check/model_mobileclip_panel.jpg>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 449--449
 [][][][][]  
  []
 
 [12
 
 ]
-LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 499.
-
-Overfull \hbox (26.90125pt too wide) in paragraph at lines 499--499
- [][] 
- []
-
-
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 499--499
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 483--483
 [][][][][]  
  []
 
 [13
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 529--529
+LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10.95> not available
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 514.
+
+Overfull \hbox (26.90125pt too wide) in paragraph at lines 514--514
+ [][] 
+ []
+
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 514--514
 [][][][][]  
  []
 
 [14
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 561--561
+File: result/debug_demo_check/model_kcf_tracking_strip.jpg Graphic file (type b
+mp)
+<result/debug_demo_check/model_kcf_tracking_strip.jpg>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 520--520
 [][][][][]  
  []
 
 [15
+
+]
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 550--550
+[][][][][]  
+ []
+
+[16
+
+]
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 582--582
+[][][][][]  
+ []
+
+[17
 
 ]
 File: result/debug_demo_check/final_best_12s_zoom_contact.jpg Graphic file (typ
@@ -1342,66 +1366,121 @@ File: result/debug_demo_check/final_15s_zoom_contact.jpg Graphic file (type bmp
 File: result/debug_demo_check/blackbox_15s_contact.jpg Graphic file (type bmp)
 <result/debug_demo_check/blackbox_15s_contact.jpg>
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 590--590
-[][][][][]  
- []
-
-[16
-
-]
-File: result/submission_stats.png Graphic file (type bmp)
-<result/submission_stats.png>
-
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 616--616
-[][][][][]  
- []
-
-[17
-
-]
-Overfull \hbox (27.6047pt too wide) in paragraph at lines 653--653
- [][] 
- []
-
-
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 653--653
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 611--611
 [][][][][]  
  []
 
 [18
 
 ]
-File: result/debug_demo_check/blackbox_15s_contact.jpg Graphic file (type bmp)
-<result/debug_demo_check/blackbox_15s_contact.jpg>
+File: result/experiment_bbox_count_by_video.png Graphic file (type bmp)
+<result/experiment_bbox_count_by_video.png>
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 676--676
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 635--635
 [][][][][]  
- []
-
-
-Overfull \vbox (4.01855pt too high) detected at line 676
  []
 
 [19
 
 ]
-File: result/submission_stats.png Graphic file (type bmp)
-<result/submission_stats.png>
+File: result/experiment_span_coverage_by_video.png Graphic file (type bmp)
+<result/experiment_span_coverage_by_video.png>
 
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 702--702
+Overfull \hbox (22.9125pt too wide) in paragraph at lines 659--659
+ [][] 
+ []
+
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 659--659
 [][][][][]  
  []
 
 [20
 
 ]
-Overfull \hbox (56.90549pt too wide) in paragraph at lines 730--730
+File: result/experiment_train_vs_annotations_iou50.png Graphic file (type bmp)
+<result/experiment_train_vs_annotations_iou50.png>
+
+Overfull \hbox (11.78452pt too wide) in paragraph at lines 684--684
+ [][] 
+ []
+
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 684--684
 [][][][][]  
  []
 
 [21
 
-] [22
+]
+File: result/experiment_metric_snapshot.png Graphic file (type bmp)
+<result/experiment_metric_snapshot.png>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 708--708
+[][][][][]  
+ []
+
+[22
+
+]
+Overfull \hbox (6.79669pt too wide) in paragraph at lines 734--734
+ [][] 
+ []
+
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 734--734
+[][][][][]  
+ []
+
+[23
+
+]
+File: result/debug_demo_check/summary_limitations_4_vertical.jpg Graphic file (
+type bmp)
+<result/debug_demo_check/summary_limitations_4_vertical.jpg>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 745--745
+[][][][][]  
+ []
+
+
+Overfull \vbox (74.9049pt too high) detected at line 745
+ []
+
+[24
+
+]
+File: result/debug_demo_check/blackbox_15s_contact.jpg Graphic file (type bmp)
+<result/debug_demo_check/blackbox_15s_contact.jpg>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 768--768
+[][][][][]  
+ []
+
+
+Overfull \vbox (4.01855pt too high) detected at line 768
+ []
+
+[25
+
+]
+File: result/experiment_span_coverage_by_video.png Graphic file (type bmp)
+<result/experiment_span_coverage_by_video.png>
+
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 794--794
+[][][][][]  
+ []
+
+[26
+
+]
+Overfull \hbox (56.90549pt too wide) in paragraph at lines 822--822
+[][][][][]  
+ []
+
+[27
+
+] [28
 
 ]
 \tf@nav=\write6
@@ -1422,12 +1501,12 @@ Package rerunfilecheck Info: File `presentation.out' has not changed.
 (rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
  ) 
 Here is how much of TeX's memory you used:
- 28037 strings out of 474878
- 605248 string characters out of 5762515
+ 28114 strings out of 474878
+ 608834 string characters out of 5762515
  1931627 words of memory out of 5000000
- 49491 multiletter control sequences out of 15000+600000
+ 49561 multiletter control sequences out of 15000+600000
  566673 words of font info for 113 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
  128i,14n,123p,425b,791s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on presentation.pdf (22 pages).
+Output written on presentation.pdf (28 pages).

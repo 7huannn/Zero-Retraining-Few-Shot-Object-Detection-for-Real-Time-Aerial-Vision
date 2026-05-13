@@ -1,4 +1,4 @@
-"""Score normalization and fusion helpers for the hybrid detector pipeline."""
+"""Score normalization and fusion helpers for the main detector pipeline."""
 
 from __future__ import annotations
 
@@ -41,9 +41,7 @@ def fuse_scores(
     w_clip: float,
     bonus: float = 0.0,
     penalty: float = 0.0,
-    siam_score: float = 0.0,
-    w_siam: float = 0.0,
 ) -> float:
-    """Weighted fusion for detector + MobileCLIP + Siamese (optional) scores."""
-    value = w_det * det_score + w_clip * clip_score + w_siam * siam_score + bonus - penalty
+    """Weighted fusion for detector + MobileCLIP scores."""
+    value = w_det * det_score + w_clip * clip_score + bonus - penalty
     return float(np.clip(value, 0.0, 1.0))
