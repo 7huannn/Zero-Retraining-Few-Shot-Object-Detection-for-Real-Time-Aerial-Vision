@@ -28,10 +28,12 @@ class InferenceConfig:
 
     # Score fusion weights
     w_det: float = 0.30
+    # Kept as w_clip for CLI/backward compatibility; used as the selected matcher weight.
     w_clip: float = 0.35
 
     # Thresholds
     fused_accept_threshold: float = 0.52
+    # Kept as min_clip_similarity for CLI/backward compatibility; used as selected matcher threshold.
     min_clip_similarity: float = 0.10
     similarity_add_threshold: float = 0.80
     tracker_bonus: float = 0.04
@@ -62,9 +64,13 @@ class ModelConfig:
     yoloe_weights: str = "models/yoloe-11l-seg.pt"
 
     # MobileCLIP2
+    matcher_type: str = "mobileclip2"
     clip_model_name: str = "MobileCLIP2-S0"
     clip_encoder_path: str = "models/mobileclip2_image_encoder_fp16.pt"
     clip_pretrained: str | None = "dfndr2b"
+
+    # Siamese
+    siamese_checkpoint: str | None = "result/siamese/best.pt"
 
     # Device
     device: str = "auto"  # "auto", "cuda", "cpu", "cuda:0", etc.
@@ -123,14 +129,20 @@ class PipelineConfig:
                 # Handle custom arg names
                 if field_name == "yoloe_weights" and hasattr(args, "yoloe_weights"):
                     model_kwargs[field_name] = value
+                elif field_name == "matcher_type" and hasattr(args, "matcher"):
+                    model_kwargs[field_name] = getattr(args, "matcher")
                 elif field_name == "clip_model_name" and hasattr(args, "clip_model_name"):
                     model_kwargs[field_name] = value
                 elif field_name == "clip_encoder_path" and hasattr(args, "clip_encoder_path"):
                     model_kwargs[field_name] = value
                 elif field_name == "clip_pretrained" and hasattr(args, "clip_pretrained"):
                     model_kwargs[field_name] = value
+                elif field_name == "siamese_checkpoint" and hasattr(args, "siamese_checkpoint"):
+                    model_kwargs[field_name] = value
                 elif field_name == "device" and hasattr(args, "device"):
                     model_kwargs[field_name] = value
+        if hasattr(args, "matcher"):
+            model_kwargs["matcher_type"] = getattr(args, "matcher")
 
         # Extract data config args
         data_kwargs = {}

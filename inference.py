@@ -12,12 +12,11 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from config import DataConfig, InferenceConfig, ModelConfig, PipelineConfig
 from detector import YOLOEDetector
-from fusion import aggregate_support_scores, cosine_to_similarity, fuse_scores, normalize_detector_scores
-from matcher import MobileCLIP2Matcher
+from fusion import fuse_scores, normalize_detector_scores
+from matcher import build_matcher
 from tracker import KCFTracker
 from utils import seed_everything
 
@@ -54,10 +53,12 @@ class FewShotDetectionPipeline:
             device=self.device,
         )
 
-        self.matcher = MobileCLIP2Matcher(
-            model_name=model_config.clip_model_name,
-            encoder_path=model_config.clip_encoder_path,
-            pretrained=model_config.clip_pretrained,
+        self.matcher = build_matcher(
+            model_config.matcher_type,
+            clip_model_name=model_config.clip_model_name,
+            clip_encoder_path=model_config.clip_encoder_path,
+            clip_pretrained=model_config.clip_pretrained,
+            siamese_checkpoint=model_config.siamese_checkpoint,
             device=self.device,
         )
 
@@ -114,8 +115,10 @@ class FewShotDetectionPipeline:
         self.tracker_bbox_return_frames = 0
         self.accepted_score_components = []
 
-        print(f"[Pipeline] Initialized for class='{class_name}', frame_size={frame_width}x{frame_height}, "
-              f"support_crops={len(self.reference_crops)}")
+        print(
+            f"[Pipeline] Initialized matcher={self.matcher.name}, class='{class_name}', "
+            f"frame_size={frame_width}x{frame_height}, support_crops={len(self.reference_crops)}"
+        )
 
     def _crop_object(
         self,
@@ -185,24 +188,14 @@ class FewShotDetectionPipeline:
         det_score: float,
         tracker_bbox: tuple[int, int, int, int] | None,
     ) -> dict[str, Any] | None:
-        """Score a single candidate detection using MobileCLIP2."""
+        """Score a single candidate detection using the selected matcher."""
         crop = self._crop_object(frame, candidate["xyxy"], candidate["mask"])
         if crop is None:
             return None
 
-        clip_embedding = self.matcher.encode_single(crop)
-        if clip_embedding is None:
+        match = self.matcher.score_crop(crop, self.inference_config.support_aggregation)
+        if match is None:
             return None
-
-        # Compute similarity against support set
-        clip_scores = F.cosine_similarity(
-            clip_embedding.expand(self.matcher.support_embeddings.shape[0], -1),
-            self.matcher.support_embeddings,
-            dim=1,
-        ).detach().cpu().numpy()
-
-        clip_cos = aggregate_support_scores(clip_scores, self.inference_config.support_aggregation)
-        clip_sim = cosine_to_similarity(clip_cos)
 
         # Tracker bonus: small boost if candidate overlaps with tracker bbox
         bonus = 0.0
@@ -213,9 +206,9 @@ class FewShotDetectionPipeline:
         # Fuse detector + matcher score
         fused = fuse_scores(
             det_score=det_score,
-            clip_score=clip_sim,
+            match_score=match.similarity,
             w_det=self.inference_config.w_det,
-            w_clip=self.inference_config.w_clip,
+            w_match=self.inference_config.w_clip,
             bonus=bonus,
         )
 
@@ -223,9 +216,10 @@ class FewShotDetectionPipeline:
             "candidate": candidate,
             "crop": crop,
             "det_score": det_score,
-            "clip_score": clip_sim,
+            "match_score": match.similarity,
+            "raw_match_score": match.raw_score,
             "fused_score": fused,
-            "clip_embedding": clip_embedding,
+            "match_embedding": match.embedding,
         }
 
     def _should_reset_tracker(self, bbox: tuple[int, int, int, int]) -> bool:
@@ -240,16 +234,13 @@ class FewShotDetectionPipeline:
             return
 
         self.reference_crops.append(scored["crop"])
-        self.matcher.support_embeddings = torch.cat(
-            [self.matcher.support_embeddings, scored["clip_embedding"]],
-            dim=0,
-        )
+        self.matcher.append_support_embedding(scored["match_embedding"])
 
         # Trim cache if too large
         overflow = len(self.reference_crops) - self.inference_config.max_reference_samples
         if overflow > 0:
             self.reference_crops = self.reference_crops[overflow:]
-            self.matcher.support_embeddings = self.matcher.support_embeddings[overflow:]
+            self.matcher.trim_support_embeddings(overflow)
 
     def predict_frame(self, frame: np.ndarray, frame_index: int) -> tuple[list[int] | None, float]:
         """
@@ -329,8 +320,8 @@ class FewShotDetectionPipeline:
 
         # Pick best candidate
         best = max(scored_candidates, key=lambda item: item["fused_score"])
-        clip_ok = best["clip_score"] >= self.inference_config.min_clip_similarity
-        accept = best["fused_score"] >= self.inference_config.fused_accept_threshold and clip_ok
+        match_ok = best["match_score"] >= self.inference_config.min_clip_similarity
+        accept = best["fused_score"] >= self.inference_config.fused_accept_threshold and match_ok
 
         if accept:
             # Initialize tracker
@@ -354,7 +345,8 @@ class FewShotDetectionPipeline:
             self.accepted_score_components.append(
                 {
                     "det_score": float(best["det_score"]),
-                    "clip_score": float(best["clip_score"]),
+                    "match_score": float(best["match_score"]),
+                    "raw_match_score": float(best["raw_match_score"]),
                     "fused_score": float(best["fused_score"]),
                 }
             )
@@ -498,10 +490,12 @@ class FewShotDetectionPipeline:
             key: float(np.mean([item[key] for item in self.accepted_score_components]))
             if self.accepted_score_components
             else 0.0
-            for key in ("det_score", "clip_score", "fused_score")
+            for key in ("det_score", "match_score", "raw_match_score", "fused_score")
         }
 
         stats = {
+            "matcher": self.matcher.name,
+            "match_score_name": self.matcher.score_label,
             "total_frames": total_frames,
             "processed_frames": processed_frames,
             "frame_start": start_frame,
@@ -515,7 +509,8 @@ class FewShotDetectionPipeline:
             "tracker_successful_updates": self.tracker_successful_updates,
             "tracker_bbox_return_frames": self.tracker_bbox_return_frames,
             "mean_det_score": component_stats["det_score"],
-            "mean_clip_score": component_stats["clip_score"],
+            "mean_match_score": component_stats["match_score"],
+            "mean_raw_match_score": component_stats["raw_match_score"],
         }
 
         return detections, stats
@@ -598,7 +593,8 @@ class FewShotDetectionPipeline:
                 detections, stats = self.process_video(context["video_path"], context)
                 video_stats[sample_id] = stats
                 print(
-                    f"  detection_rate={stats['detection_rate'] * 100:.2f}% "
+                    f"  matcher={stats['matcher']} "
+                    f"detection_rate={stats['detection_rate'] * 100:.2f}% "
                     f"mean_fused={stats['mean_fused_score']:.3f} "
                     f"updates={stats['tracker_successful_updates']}"
                 )
@@ -634,11 +630,15 @@ class FewShotDetectionPipeline:
         for video_id, stats in sorted(video_stats.items()):
             lines.append(f"Video: {video_id}")
             lines.append(f"  - Class: {stats.get('class_name', 'N/A')}")
+            lines.append(f"  - Matcher: {stats.get('matcher', 'N/A')}")
             lines.append(f"  - Processed Frames: {stats.get('processed_frames', 0)}")
             lines.append(f"  - Frames with Detections: {stats.get('frames_with_detection', 0)}")
             lines.append(f"  - Detection Rate: {stats.get('detection_rate', 0.0) * 100:.2f}%")
             lines.append(f"  - Mean Fused Score: {stats.get('mean_fused_score', 0.0):.3f}")
-            lines.append(f"  - Mean Det/CLIP: {stats.get('mean_det_score', 0.0):.3f} / {stats.get('mean_clip_score', 0.0):.3f}")
+            lines.append(
+                f"  - Mean Det/Matcher: "
+                f"{stats.get('mean_det_score', 0.0):.3f} / {stats.get('mean_match_score', 0.0):.3f}"
+            )
             lines.append(f"  - Tracker Init Count: {stats.get('tracker_init_count', 0)}")
             lines.append(f"  - Tracker Successful Updates: {stats.get('tracker_successful_updates', 0)}")
             lines.append(f"  - Tracker BBox Returns: {stats.get('tracker_bbox_return_frames', 0)}")
@@ -677,7 +677,7 @@ class FewShotDetectionPipeline:
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser."""
     parser = argparse.ArgumentParser(
-        description="Few-shot object detection and tracking pipeline using YOLOE + MobileCLIP2 + KCF.",
+        description="Few-shot object detection and tracking pipeline using YOLOE + selectable matcher + KCF.",
     )
 
     # Data args
@@ -687,9 +687,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Model args
     parser.add_argument("--yoloe-weights", default="models/yoloe-11l-seg.pt")
+    parser.add_argument("--matcher", choices=["mobileclip2", "siamese"], default="mobileclip2")
     parser.add_argument("--clip-model-name", default="MobileCLIP2-S0")
     parser.add_argument("--clip-encoder-path", default="models/mobileclip2_image_encoder_fp16.pt")
     parser.add_argument("--clip-pretrained", default="dfndr2b")
+    parser.add_argument("--siamese-checkpoint", default="result/siamese/best.pt")
     parser.add_argument("--device", default="auto")
 
     # Detection args
@@ -709,11 +711,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Score fusion
     parser.add_argument("--w-det", type=float, default=0.30)
-    parser.add_argument("--w-clip", type=float, default=0.35)
+    parser.add_argument("--w-clip", "--w-match", dest="w_clip", type=float, default=0.35)
 
     # Thresholds
     parser.add_argument("--fused-threshold", type=float, default=0.52)
-    parser.add_argument("--clip-threshold", type=float, default=0.10)
+    parser.add_argument("--clip-threshold", "--match-threshold", dest="clip_threshold", type=float, default=0.10)
     parser.add_argument("--similarity-add-threshold", type=float, default=0.80)
     parser.add_argument("--tracker-bonus", type=float, default=0.04)
 
@@ -771,9 +773,11 @@ def main(argv: list[str] | None = None) -> int:
 
     model_cfg = ModelConfig(
         yoloe_weights=weights,
+        matcher_type=args.matcher,
         clip_model_name=args.clip_model_name,
         clip_encoder_path=args.clip_encoder_path,
         clip_pretrained=args.clip_pretrained,
+        siamese_checkpoint=args.siamese_checkpoint,
         device=args.device,
     )
 

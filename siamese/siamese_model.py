@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -175,6 +176,16 @@ def cosine_similarity(embedding_a: torch.Tensor, embedding_b: torch.Tensor) -> t
     return F.cosine_similarity(embedding_a, embedding_b)
 
 
+def calibrate_cosine_similarity(cosine_value: float, calibration: dict[str, Any] | None) -> float:
+    """Map cosine similarity to a calibrated [0, 1] score when calibration exists."""
+    if not calibration:
+        return float(np.clip((cosine_value + 1.0) * 0.5, 0.0, 1.0))
+    scale = float(calibration.get("scale", 1.0))
+    bias = float(calibration.get("bias", 0.0))
+    logit = np.clip(scale * cosine_value + bias, -40.0, 40.0)
+    return float(1.0 / (1.0 + math.exp(-float(logit))))
+
+
 def build_model_from_config(config: dict[str, Any]) -> SiameseEmbeddingNet:
     """Create a Siamese model from a config dictionary."""
     return SiameseEmbeddingNet(
@@ -253,8 +264,13 @@ class SiameseVerifier:
         self.device = resolve_torch_device(device)
         self.model, payload = load_siamese_checkpoint(checkpoint_path, self.device)
         config = dict(payload.get("config", {}))
+        extra = dict(payload.get("extra", {}))
         self.image_size = image_size or int(config.get("image_size", 224))
         self.transform = build_image_transform(self.image_size, train=False)
+        self.calibration: dict[str, Any] | None = None
+        calibration = extra.get("calibration")
+        if isinstance(calibration, dict):
+            self.calibration = calibration
 
     def _prepare_image(self, image: ImageInput) -> Image.Image:
         if isinstance(image, (str, Path)):
@@ -311,9 +327,13 @@ class SiameseVerifier:
         candidate_embedding = self.encode(candidate)
         cosine_scores = cosine_similarity(reference_embeddings, candidate_embedding.expand_as(reference_embeddings))
         distances = F.pairwise_distance(reference_embeddings, candidate_embedding.expand_as(reference_embeddings))
+        cosine_mean = float(cosine_scores.mean().item())
+        cosine_max = float(cosine_scores.max().item())
         return {
-            "cosine_mean": round(float(cosine_scores.mean().item()), 6),
-            "cosine_max": round(float(cosine_scores.max().item()), 6),
+            "cosine_mean": round(cosine_mean, 6),
+            "cosine_max": round(cosine_max, 6),
+            "calibrated_mean": round(calibrate_cosine_similarity(cosine_mean, self.calibration), 6),
+            "calibrated_max": round(calibrate_cosine_similarity(cosine_max, self.calibration), 6),
             "l2_mean": round(float(distances.mean().item()), 6),
             "l2_min": round(float(distances.min().item()), 6),
         }

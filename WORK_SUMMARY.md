@@ -2,6 +2,44 @@
 
 File nay tom tat ngan gon nhung thay doi da lam de ban khac co the nam duoc da sua gi, tune gi va ket qua hien tai.
 
+## Update 2026-05-14: unified matcher pipeline
+
+- Da tao nhanh `unified-matching-pipeline` tu `main`.
+- Pipeline chinh da duoc gom lai thanh mot flow chung:
+
+```text
+tap anh K-shot + video truy van
+  -> YOLOE visual prompt proposals
+  -> matcher duoc chon: mobileclip2 hoac siamese
+  -> fusion detector score + matcher score + tracker bonus
+  -> KCF tracking
+  -> output bbox + score
+```
+
+- Chon matcher bang CLI:
+
+```bash
+python inference.py --matcher mobileclip2 ...
+python inference.py --matcher siamese --siamese-checkpoint result/siamese/best.pt ...
+```
+
+- `predict.sh` ho tro so sanh hai matcher cung preprocessing/cung detector/cung tracker:
+
+```bash
+MATCHER=all LIMIT_SAMPLES=1 MAX_FRAMES=120 ./predict.sh
+```
+
+- Output so sanh:
+
+```text
+result/submission_mobileclip2.json
+result/submission_siamese.json
+```
+
+- Smoke test da chay:
+  - `mobileclip2`, `limit_videos=1`, `max_frames=2`: chay thanh cong, co output.
+  - `siamese`, `limit_videos=1`, `max_frames=2`: chay thanh cong, chua accept bbox voi threshold hien tai tren 2 frame dau.
+
 ## Muc tieu
 
 Toi uu pipeline few-shot detection/tracking tren video drone:
@@ -168,4 +206,3 @@ Proxy score         = 0.3391
 2. Inspect debug frames, dac biet `CardboardBox_0`, de xem co drift/false positive khong.
 3. Neu GT cho thay false positive cao, giam `top_k`, tang `yoloe_conf`, hoac disable/giam weight Siamese.
 4. Neu tiep tuc Siamese, can fix collapse positive bang better mining/loss/calibration truoc khi tin no la verifier.
-
