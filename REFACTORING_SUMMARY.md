@@ -1,5 +1,10 @@
 # Main Branch Refactoring Summary
 
+> Update 2026-05-14: this document describes the earlier MobileCLIP2-only refactor.
+> The current `unified-matching-pipeline` branch keeps the modular structure but adds
+> `--matcher mobileclip2|siamese`, so Siamese is available as a comparable matcher backend
+> inside the shared YOLOE + matcher + KCF pipeline.
+
 ## Overview
 The main branch has been refactored to follow a clean, modular pipeline architecture:
 

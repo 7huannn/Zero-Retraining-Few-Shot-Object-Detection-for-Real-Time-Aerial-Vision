@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <code>YOLOE Visual Prompt</code> · <code>MobileCLIP2</code> · <code>KCF Tracking</code> · <code>JSON Submission</code>
+  <code>YOLOE Visual Prompt</code> · <code>MobileCLIP2/Siamese Matching</code> · <code>KCF Tracking</code> · <code>JSON Submission</code>
 </p>
 
 ## Tổng Quan
@@ -32,8 +32,8 @@ Bài toán được xử lý theo thiết lập few-shot cho video drone:
 
 1. `preprocessing.py` tạo YOLOE visual prompt embeddings từ ảnh reference và các background augmentation.
 2. `inference.py` dùng YOLOE để sinh object proposals trên từng query frame.
-3. MobileCLIP2 so khớp từng proposal crop với các support crops.
-4. `fusion.py` chuẩn hóa và gộp detector score, CLIP score cùng tracker bonus.
+3. Matcher được chọn (`mobileclip2` hoặc `siamese`) so khớp từng proposal crop với các support crops.
+4. `fusion.py` chuẩn hóa và gộp detector score, matcher score cùng tracker bonus.
 6. KCF tracker duy trì bbox ổn định giữa các lần detector re-init.
 7. Kết quả cuối được xuất thành JSON, kèm debug frames, report và plot nếu bật tùy chọn tương ứng.
 
@@ -84,7 +84,7 @@ Các dependency chính:
 | `scikit-learn` | Tiện ích preprocessing và thống kê màu |
 | `matplotlib` | Vẽ biểu đồ kết quả inference |
 
-`inference.py` import MobileCLIP qua local checkout `ml-mobileclip/open_clip/src`. Thư mục `ml-mobileclip/` đang bị ignore khỏi git nhưng vẫn phải tồn tại trên máy chạy.
+Khi chạy `--matcher mobileclip2`, `inference.py` import MobileCLIP qua local checkout `ml-mobileclip/open_clip/src`. Thư mục `ml-mobileclip/` đang bị ignore khỏi git nhưng vẫn phải tồn tại trên máy chạy.
 
 ## Artifact Cần Chuẩn Bị
 
@@ -98,7 +98,7 @@ models/
 └── mobileclip2_image_encoder_fp16.pt
 ```
 
-`result/siamese/best.pt` chỉ cần khi bạn chạy các script trong thư mục `siamese/` (không dùng trong main inference pipeline).
+`result/siamese/best.pt` cần khi chạy `--matcher siamese` hoặc các script train/evaluate trong thư mục `siamese/`.
 
 Layout public test:
 
@@ -134,10 +134,25 @@ Smoke test nhanh:
 LIMIT_SAMPLES=1 MAX_FRAMES=120 ./predict.sh
 ```
 
+Chạy cả hai matcher để so sánh cùng một preprocessing, cùng detector và cùng tracker:
+
+```bash
+MATCHER=all LIMIT_SAMPLES=1 MAX_FRAMES=120 ./predict.sh
+```
+
+Output so sánh:
+
+```text
+result/submission_mobileclip2.json
+result/submission_mobileclip2_report.txt
+result/submission_siamese.json
+result/submission_siamese_report.txt
+```
+
 `predict.sh` thực hiện hai bước:
 
 1. Preprocess `data/public_test` vào `preprocessed_data/public_test`.
-2. Chạy hybrid inference và ghi `result/submission.json`.
+2. Chạy unified inference với matcher được chọn và ghi `result/submission.json`.
 
 Output mặc định:
 
@@ -152,11 +167,13 @@ result/submission_stats.png
 `predict.sh` expose các tham số chính qua environment variables:
 
 ```bash
+MATCHER=mobileclip2 \
 YOLOE_CONF=0.001 \
 TOP_K=24 \
 FUSED_THRESHOLD=0.52 \
 W_DET=0.30 \
-W_CLIP=0.35 \
+W_MATCH=0.35 \
+MATCH_THRESHOLD=0.10 \
 SIMILARITY_ADD_THRESHOLD=0.80 \
 NUM_BACKGROUNDS=4 \
 MIN_AUG_SCALE=0.04 \
@@ -172,7 +189,9 @@ Best proxy config hiện tại:
 | `yoloe_conf` | `0.001` |
 | `top_k_proposals` | `24` |
 | `fused_accept_threshold` | `0.52` |
-| `w_det` / `w_clip` | `0.30` / `0.35` |
+| `matcher` | `mobileclip2` hoặc `siamese` |
+| `w_det` / `w_match` | `0.30` / `0.35` |
+| `match_threshold` | `0.10` |
 | `similarity_add_threshold` | `0.80` |
 | `max_reference_samples` | `20` |
 | `crop_padding_ratio` | `0.04` |
@@ -229,15 +248,35 @@ python inference.py \
   --preprocessed-dir preprocessed_data/public_test \
   --output-json result/submission.json \
   --yoloe-weights models/yoloe-11l-seg.pt \
+  --matcher mobileclip2 \
   --clip-encoder-path models/mobileclip2_image_encoder_fp16.pt \
   --yoloe-conf 0.001 \
   --top-k 24 \
   --fused-threshold 0.52 \
   --w-det 0.30 \
-  --w-clip 0.35 \
+  --w-match 0.35 \
+  --match-threshold 0.10 \
   --similarity-add-threshold 0.80 \
   --max-reference-samples 20 \
   --crop-padding-ratio 0.04
+```
+
+Chạy cùng pipeline bằng Siamese matcher:
+
+```bash
+python inference.py \
+  --preprocessed-dir preprocessed_data/public_test \
+  --output-json result/submission_siamese.json \
+  --yoloe-weights models/yoloe-11l-seg.pt \
+  --matcher siamese \
+  --siamese-checkpoint result/siamese/best.pt \
+  --yoloe-conf 0.001 \
+  --top-k 24 \
+  --fused-threshold 0.52 \
+  --w-det 0.30 \
+  --w-match 0.35 \
+  --match-threshold 0.10 \
+  --similarity-add-threshold 0.80
 ```
 
 Lưu debug frames để kiểm tra trực quan:
@@ -252,9 +291,9 @@ python inference.py \
   --frames-output-dir result/debug_frames
 ```
 
-## Siamese Verifier (Legacy/Research)
+## Siamese Verifier
 
-Các script Siamese vẫn được giữ để nghiên cứu/tuning riêng, nhưng không còn nằm trong inference pipeline chính của nhánh `main`.
+Siamese hiện là một matcher có thể chọn trong inference pipeline chính. Các script trong `siamese/` vẫn dùng để train/evaluate checkpoint riêng trước khi chạy `--matcher siamese`.
 
 Train:
 
@@ -296,7 +335,7 @@ Kết quả checkpoint mới nhất trong quá trình tuning:
 | `val_recall` | `1.000000` |
 | `val_f1` | `0.662655` |
 
-Siamese branch hiện hữu ích như một soft positive boost, chưa đủ tin cậy để dùng như verifier độc lập.
+Checkpoint Siamese hiện vẫn yếu theo validation cũ, nên khi thuyết trình nên so sánh như một matcher thay thế hơn là khẳng định nó tốt hơn MobileCLIP2.
 
 ## Ghi Chú Vận Hành
 

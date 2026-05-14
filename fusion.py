@@ -1,4 +1,4 @@
-"""Score normalization and fusion helpers for the main detector pipeline."""
+"""Score normalization and fusion helpers for the detector pipeline."""
 
 from __future__ import annotations
 
@@ -36,12 +36,12 @@ def aggregate_support_scores(scores: np.ndarray, mode: str = "mean") -> float:
 
 def fuse_scores(
     det_score: float,
-    clip_score: float,
+    match_score: float,
     w_det: float,
-    w_clip: float,
+    w_match: float,
     bonus: float = 0.0,
     penalty: float = 0.0,
 ) -> float:
-    """Weighted fusion for detector + MobileCLIP scores."""
-    value = w_det * det_score + w_clip * clip_score + bonus - penalty
+    """Weighted fusion for detector + selected matcher score."""
+    value = w_det * det_score + w_match * match_score + bonus - penalty
     return float(np.clip(value, 0.0, 1.0))

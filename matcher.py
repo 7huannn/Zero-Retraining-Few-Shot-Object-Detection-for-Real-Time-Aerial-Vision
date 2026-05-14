@@ -1,9 +1,10 @@
-"""MobileCLIP2 matcher for semantic similarity verification."""
+"""Image matchers for semantic similarity verification."""
 
 from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
+
+from fusion import aggregate_support_scores, cosine_to_similarity
 
 
 def _bootstrap_open_clip() -> Any:
@@ -25,11 +28,75 @@ def _bootstrap_open_clip() -> Any:
     return open_clip
 
 
-open_clip = _bootstrap_open_clip()
+@dataclass(frozen=True)
+class MatchResult:
+    """Matcher output for one candidate crop."""
+
+    similarity: float
+    raw_score: float
+    embedding: torch.Tensor
 
 
-class MobileCLIP2Matcher:
+class BaseImageMatcher:
+    """Shared contract used by the inference pipeline."""
+
+    name = "base"
+    score_label = "match"
+
+    def __init__(self, device: str | None = None) -> None:
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.support_embeddings: torch.Tensor | None = None
+
+    def encode_batch(self, crops: list[np.ndarray]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def encode_single(self, crop: np.ndarray) -> torch.Tensor | None:
+        raise NotImplementedError
+
+    def raw_to_similarity(self, raw_score: float) -> float:
+        return cosine_to_similarity(raw_score)
+
+    def set_support_embeddings(self, crops: list[np.ndarray]) -> None:
+        if not crops:
+            raise ValueError("Support set cannot be empty")
+        self.support_embeddings = self.encode_batch(crops)
+        print(f"[{self.name}] Set support embeddings: {self.support_embeddings.shape}")
+
+    def score_crop(self, crop: np.ndarray, aggregation: str = "mean") -> MatchResult | None:
+        if self.support_embeddings is None:
+            return None
+        embedding = self.encode_single(crop)
+        if embedding is None:
+            return None
+
+        scores = F.cosine_similarity(
+            embedding.expand(self.support_embeddings.shape[0], -1),
+            self.support_embeddings,
+            dim=1,
+        ).detach().cpu().numpy()
+        raw_score = aggregate_support_scores(scores, aggregation)
+        return MatchResult(
+            similarity=self.raw_to_similarity(raw_score),
+            raw_score=raw_score,
+            embedding=embedding,
+        )
+
+    def append_support_embedding(self, embedding: torch.Tensor) -> None:
+        if self.support_embeddings is None:
+            self.support_embeddings = embedding
+            return
+        self.support_embeddings = torch.cat([self.support_embeddings, embedding], dim=0)
+
+    def trim_support_embeddings(self, overflow: int) -> None:
+        if overflow > 0 and self.support_embeddings is not None:
+            self.support_embeddings = self.support_embeddings[overflow:]
+
+
+class MobileCLIP2Matcher(BaseImageMatcher):
     """MobileCLIP2 semantic matcher for few-shot detection."""
+
+    name = "mobileclip2"
+    score_label = "clip"
 
     def __init__(
         self,
@@ -47,15 +114,15 @@ class MobileCLIP2Matcher:
             pretrained: Fallback pretrained tag if encoder_path not found
             device: torch device (default: auto-detect)
         """
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        super().__init__(device=device)
         self.model_name = model_name
         self.model = None
         self.preprocess = None
-        self.support_embeddings: torch.Tensor | None = None
         self._load_model(encoder_path, pretrained)
 
     def _load_model(self, encoder_path: str | None, pretrained: str | None) -> None:
         """Load MobileCLIP2 model with weights."""
+        open_clip = _bootstrap_open_clip()
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(
             self.model_name,
             pretrained=None,
@@ -132,18 +199,6 @@ class MobileCLIP2Matcher:
             print(f"[MobileCLIP2] Error encoding crop: {e}")
             return None
 
-    def set_support_embeddings(self, crops: list[np.ndarray]) -> None:
-        """
-        Pre-encode support set for similarity matching.
-
-        Args:
-            crops: List of reference image crops
-        """
-        if not crops:
-            raise ValueError("Support set cannot be empty")
-        self.support_embeddings = self.encode_batch(crops)
-        print(f"[MobileCLIP2] Set support embeddings: {self.support_embeddings.shape}")
-
     def compute_similarity(self, crop_embedding: torch.Tensor | None) -> float:
         """
         Compute max cosine similarity against support set.
@@ -195,3 +250,72 @@ class MobileCLIP2Matcher:
             Normalized score in [0, 1]
         """
         return float(np.clip((cosine_value + 1.0) * 0.5, 0.0, 1.0))
+
+
+class SiameseMatcher(BaseImageMatcher):
+    """Siamese verifier matcher with the same interface as MobileCLIP2."""
+
+    name = "siamese"
+    score_label = "siamese"
+
+    def __init__(
+        self,
+        checkpoint_path: str,
+        device: str | None = None,
+    ) -> None:
+        super().__init__(device=device)
+        if not checkpoint_path or not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Missing Siamese checkpoint: {checkpoint_path}")
+        from siamese.siamese_model import SiameseVerifier, calibrate_cosine_similarity
+
+        self.verifier = SiameseVerifier(checkpoint_path, device=self.device)
+        self._calibrate_cosine_similarity = calibrate_cosine_similarity
+        print(f"[Siamese] Loaded checkpoint: {checkpoint_path}")
+
+    def encode_batch(self, crops: list[np.ndarray]) -> torch.Tensor:
+        with torch.inference_mode():
+            embeddings = self.verifier.encode_many(crops)
+            embeddings = F.normalize(embeddings.to(self.device), p=2, dim=-1)
+        return embeddings
+
+    def encode_single(self, crop: np.ndarray) -> torch.Tensor | None:
+        try:
+            with torch.inference_mode():
+                embedding = self.verifier.encode(crop)
+                embedding = F.normalize(embedding.to(self.device), p=2, dim=-1)
+            return embedding
+        except Exception as e:
+            print(f"[Siamese] Error encoding crop: {e}")
+            return None
+
+    def raw_to_similarity(self, raw_score: float) -> float:
+        calibration = getattr(self.verifier, "calibration", None)
+        return self._calibrate_cosine_similarity(raw_score, calibration)
+
+
+def build_matcher(
+    matcher_type: str,
+    *,
+    clip_model_name: str,
+    clip_encoder_path: str | None,
+    clip_pretrained: str | None,
+    siamese_checkpoint: str | None,
+    device: str | None,
+) -> BaseImageMatcher:
+    """Create the requested matcher backend."""
+    normalized = matcher_type.lower().strip()
+    if normalized in {"mobileclip", "mobileclip2", "clip"}:
+        return MobileCLIP2Matcher(
+            model_name=clip_model_name,
+            encoder_path=clip_encoder_path,
+            pretrained=clip_pretrained,
+            device=device,
+        )
+    if normalized in {"siamese", "siam"}:
+        if siamese_checkpoint is None:
+            raise ValueError("--siamese-checkpoint is required when --matcher siamese")
+        return SiameseMatcher(
+            checkpoint_path=siamese_checkpoint,
+            device=device,
+        )
+    raise ValueError(f"Unsupported matcher: {matcher_type}")
