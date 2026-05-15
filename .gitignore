@@ -35,3 +35,59 @@ ml-mobileclip/
 
 *.pt
 *.pdparams
+
+# Python envs and editors
+.venv/
+venv/
+env/
+ENV/
+.env
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Common large/binary model formats
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.npz
+*.npy
+
+# Logs, caches, runs
+logs/
+runs/
+cache/
+.cache/
+*.log
+
+# Packaging/build
+build/
+dist/
+*.egg-info/
+
+# Misc
+*.zip
+*.tar.gz
+*.tgz
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.brf
+*.idx
+*.ind
+*.lof
+*.lot
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.run.xml
+*.ilg
+*.nav
+*.snm
