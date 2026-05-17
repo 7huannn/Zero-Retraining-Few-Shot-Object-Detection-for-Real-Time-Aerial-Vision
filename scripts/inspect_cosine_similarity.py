@@ -24,8 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from fusion import aggregate_support_scores
-from matcher import build_matcher
+from src.pipeline.fusion import aggregate_support_scores
+from src.pipeline.matcher import build_matcher
 
 
 def _load_video_path(preprocessed_dir: Path, sample_id: str) -> str:

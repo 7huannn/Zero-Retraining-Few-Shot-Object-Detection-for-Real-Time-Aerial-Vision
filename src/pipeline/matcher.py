@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-from fusion import aggregate_support_scores, cosine_to_similarity
+from .fusion import aggregate_support_scores, cosine_to_similarity
 
 
 def _bootstrap_open_clip() -> Any:

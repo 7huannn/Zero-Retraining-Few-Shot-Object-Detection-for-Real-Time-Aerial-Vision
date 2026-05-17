@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from siamese.data import SiamesePairDataset
 from siamese.siamese_model import ContrastiveLoss, TripletBatchHardLoss, cosine_similarity, load_siamese_checkpoint
-from utils import ensure_dir, load_json, load_yaml, resolve_path, save_json
+from src.pipeline.utils import ensure_dir, load_json, load_yaml, resolve_path, save_json
 
 
 def create_loader(dataset: SiamesePairDataset, batch_size: int, num_workers: int) -> DataLoader:

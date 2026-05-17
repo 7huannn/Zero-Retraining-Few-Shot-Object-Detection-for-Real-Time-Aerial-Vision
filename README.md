@@ -86,15 +86,14 @@ result/submission_siamese_stats.png
 ├── models/                         # Model weights local (ignore khỏi git)
 ├── preprocessed_data/              # Artifact từ preprocessing
 ├── result/                         # Submission, report, plot, debug
-├── tasks/demo_configs/             # Config/demo JSON cho thuyết trình
-├── preprocessing.py                # Tạo VPE + reference crops
-├── inference.py                    # Pipeline inference thống nhất
-├── matcher.py                      # MobileCLIP2 matcher + Siamese matcher
-├── fusion.py                       # Weighted fusion detector/matcher/tracker
-├── tracker.py                      # KCF tracker logic
-├── tracker_adapter.py              # Chọn backend KCF/legacy_kcf
+├── configs/demo/                   # Config/demo JSON cho thuyết trình
+├── docs/                           # Slide source + ảnh phục vụ tài liệu
+├── src/pipeline/                   # Core modules (config/detector/matcher/fusion/tracker/utils)
+├── src/apps/                       # App entrypoints (inference/preprocessing/predict)
+├── preprocessing.py                # CLI shim -> src/apps/preprocessing.py
+├── inference.py                    # CLI shim -> src/apps/inference.py
+├── predict.py                      # CLI shim -> src/apps/predict.py
 ├── predict.sh                      # Runner end-to-end
-├── predict.py                      # Wrapper tương thích cũ -> inference.py
 ├── siamese/                        # Train/evaluate Siamese verifier
 └── yoloe/                          # Helper scripts YOLO/YOLOE
 ```

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from utils import ensure_dir
+from src.pipeline.utils import ensure_dir
 
 
 class YOLOEDemoRunner:

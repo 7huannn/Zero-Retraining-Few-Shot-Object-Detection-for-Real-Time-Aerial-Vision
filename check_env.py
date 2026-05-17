@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import platform
 
-from tracker_adapter import available_tracker_backends
-from utils import detect_optional_package
+from src.pipeline.tracker_adapter import available_tracker_backends
+from src.pipeline.utils import detect_optional_package
 
 
 def main(argv: list[str] | None = None) -> int:

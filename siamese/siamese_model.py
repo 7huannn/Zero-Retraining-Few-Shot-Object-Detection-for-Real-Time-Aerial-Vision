@@ -14,7 +14,7 @@ from torch import nn
 from torch.nn import functional as F
 from torchvision import models, transforms
 
-from utils import ensure_dir, save_json
+from src.pipeline.utils import ensure_dir, save_json
 
 ImageInput = str | Path | Image.Image | np.ndarray
 

@@ -26,7 +26,7 @@ from siamese.siamese_model import (
     cosine_similarity,
     save_siamese_checkpoint,
 )
-from utils import ensure_dir, load_json, load_yaml, resolve_path, save_json, seed_everything
+from src.pipeline.utils import ensure_dir, load_json, load_yaml, resolve_path, save_json, seed_everything
 
 
 def resolve_device(device_value: str | None) -> torch.device:

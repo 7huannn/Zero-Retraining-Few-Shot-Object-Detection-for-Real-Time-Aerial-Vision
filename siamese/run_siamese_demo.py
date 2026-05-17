@@ -11,7 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from siamese.siamese_model import SiameseDemoRunner
-from utils import load_yaml, resolve_path
+from src.pipeline.utils import load_yaml, resolve_path
 
 
 def main(argv: list[str] | None = None) -> int:

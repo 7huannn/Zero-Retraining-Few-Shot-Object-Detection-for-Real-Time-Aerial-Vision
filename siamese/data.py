@@ -14,7 +14,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from siamese.siamese_model import build_image_transform
-from utils import ensure_dir, load_json, save_json
+from src.pipeline.utils import ensure_dir, load_json, save_json
 
 
 def sample_id_to_class_name(sample_id: str) -> str:

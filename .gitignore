@@ -34,6 +34,7 @@ ml-mobileclip/
 /fewshot_input_output_person1.*
 /assets/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.png
 /tasks/*.pdf
+/tasks/
 *_backup_before_edit.pdf
 *backup_before_edit.pdf
 * (copy).pdf
