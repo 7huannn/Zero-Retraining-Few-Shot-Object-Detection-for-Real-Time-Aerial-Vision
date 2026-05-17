@@ -98,3 +98,8 @@ dist/
 *.ilg
 *.nav
 *.snm
+
+# Local planning/presentation docs (not part of runtime)
+/WORK_SUMMARY.md
+/REFACTORING_SUMMARY.md
+/presentation.pdf
