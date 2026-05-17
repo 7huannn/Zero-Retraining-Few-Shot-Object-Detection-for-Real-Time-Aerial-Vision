@@ -1,0 +1,29 @@
+{
+  "name": "siamese_blackbox0_sceneB_v2",
+  "description": "BlackBox_0 scene B with cleaner box on black case (~14s).",
+  "dataset": {
+    "preprocessed_dir": "preprocessed_data/public_test",
+    "video_id": "BlackBox_0",
+    "video_path": "data/public_test/samples/BlackBox_0/drone_video.mp4",
+    "limit_videos": 1
+  },
+  "inference": {
+    "matcher": "siamese",
+    "yoloe_conf": 0.0015,
+    "top_k": 20,
+    "fused_threshold": 0.52,
+    "w_det": 0.3,
+    "w_match": 0.35,
+    "match_threshold": 0.1,
+    "similarity_add_threshold": 0.8
+  },
+  "demo_render": {
+    "source_json": "result/demo_v2/submission_blackbox0_siamese_full.json",
+    "filtered_json": "result/demo_v2/submission_blackbox0_siamese_sceneB_v2.json",
+    "output_video": "result/demo_v2/blackbox_0_siamese_sceneB_v2_14s.mp4",
+    "start_frame": 4670,
+    "num_frames": 55,
+    "output_fps": 4.0,
+    "label": "blackbox_0_siamese"
+  }
+}

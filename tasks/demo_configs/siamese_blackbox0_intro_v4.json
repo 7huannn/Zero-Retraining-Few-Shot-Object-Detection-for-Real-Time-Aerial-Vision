@@ -1,0 +1,16 @@
+{
+  "name": "siamese_blackbox0_intro_v4",
+  "description": "Intro without bbox, then stable detection on BlackBox_0.",
+  "dataset": {
+    "video_id": "BlackBox_0",
+    "video_path": "data/public_test/samples/BlackBox_0/drone_video.mp4"
+  },
+  "render": {
+    "json": "result/demo_v2/submission_blackbox0_siamese_sceneB_intro_v4.json",
+    "output_video": "result/demo_v2/blackbox_0_siamese_intro_v4_15s.mp4",
+    "start_frame": 4650,
+    "num_frames": 60,
+    "output_fps": 4.0,
+    "label": "blackbox_0_siamese"
+  }
+}

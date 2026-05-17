@@ -1,0 +1,16 @@
+{
+  "name": "siamese_blackbox0_intro_v6",
+  "description": "Cleaner intro: object enters frame, then bbox appears quickly and stays stable.",
+  "dataset": {
+    "video_id": "BlackBox_0",
+    "video_path": "data/public_test/samples/BlackBox_0/drone_video.mp4"
+  },
+  "render": {
+    "json": "result/demo_v2/submission_blackbox0_siamese_intro_v6.json",
+    "output_video": "result/demo_v2/blackbox_0_siamese_intro_v6_15s.mp4",
+    "start_frame": 2368,
+    "num_frames": 90,
+    "output_fps": 6.0,
+    "label": "blackbox_0_siamese"
+  }
+}

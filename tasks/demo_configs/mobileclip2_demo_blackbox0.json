@@ -1,0 +1,27 @@
+{
+  "name": "mobileclip2_demo_blackbox0",
+  "description": "Balanced demo config for 10s public BlackBox_0 clip.",
+  "dataset": {
+    "preprocessed_dir": "preprocessed_data/public_test",
+    "video_id": "BlackBox_0",
+    "video_path": "data/public_test/samples/BlackBox_0/drone_video.mp4",
+    "limit_videos": 1,
+    "max_frames": 600
+  },
+  "inference": {
+    "matcher": "mobileclip2",
+    "yoloe_conf": 0.0015,
+    "top_k": 20,
+    "fused_threshold": 0.52,
+    "w_det": 0.30,
+    "w_match": 0.35,
+    "match_threshold": 0.10,
+    "similarity_add_threshold": 0.80
+  },
+  "outputs": {
+    "submission_json": "result/demo/submission_mobileclip2_demo.json",
+    "demo_video": "result/demo/mobileclip2_demo_10s.mp4",
+    "demo_start_frame": 293,
+    "demo_num_frames": 250
+  }
+}
